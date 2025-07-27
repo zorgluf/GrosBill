@@ -5,7 +5,7 @@ WARN = 30
 ERROR = 40
 DISABLED = 50
 
-LOGDIR = "logs"
-RESULTSPATH = 'viz/results.csv'
-TMPMODELDIR = "zoo/tmp"
-MODELDIR = "zoo"
+LOGDIR = "app/logs"
+RESULTSPATH = 'app/viz/results.csv'
+TMPMODELDIR = "app/zoo/tmp"
+MODELDIR = "app/zoo"

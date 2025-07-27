@@ -3,3 +3,9 @@ stable-baselines3
 jupyterlab
 pillow
 tensorboard
+gymnasium
+numpy
+opencv-python
+shimmy
+sb3-contrib
+nicegui

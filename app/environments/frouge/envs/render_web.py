@@ -174,23 +174,20 @@ def _gui_human_actions(env: FlammeRougeEnv, callback):
                                 _element_sprinteur(_get_player_color(env.current_player_num+1)).style("width: 100%;")
     
 
+def init_web(env: FlammeRougeEnv, callback = None):
+    with ui.row().classes("bg-green-1 q-py-md").style("width: 100%;"):
+        _gui_board(env, callback)
+    with ui.row():
+        ui.label("").bind_text_from(env, "turns_taken", backward=lambda x: f"Turn : {x}")
+        ui.label("").bind_text_from(env, "phase", backward=lambda x: "Rider placement" if x == 0 else "Deck choice" if x == 1 else "Card choice")
+    _gui_players(env)
+    _gui_human_actions(env, callback)
+    ui.button("Finish game.", on_click=lambda: callback(-1)).bind_visibility_from(env, "done")
+
 def render_web(env: FlammeRougeEnv, callback):
-    global FIRST_START
-    if FIRST_START:
-        with ui.row().classes("bg-green-1 q-py-md").style("width: 100%;"):
-            _gui_board(env, callback)
-        with ui.row():
-            ui.label("").bind_text_from(env, "turns_taken", backward=lambda x: f"Turn : {x}")
-            ui.label("").bind_text_from(env, "phase", backward=lambda x: "Rider placement" if x == 0 else "Deck choice" if x == 1 else "Card choice")
-        _gui_players(env)
-        _gui_human_actions(env, callback)
-        ui.button("Finish game.", on_click=lambda: callback(-1)).bind_visibility_from(env, "done")
-        FIRST_START = False
-        ui.run(reload=False)
-    else:
-        _gui_board.refresh(env, callback)
-        _gui_human_actions.refresh(env, callback)
-        _gui_players.refresh(env)
+    _gui_board.refresh(env, callback)
+    _gui_human_actions.refresh(env, callback)
+    _gui_players.refresh(env)
 
 @ui.refreshable
 def _element_rouleur(color: str):

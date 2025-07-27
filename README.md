@@ -103,13 +103,12 @@ This is a quick tutorial to allow you to start using the two entrypoints into th
 <!-- QUICKSTART -->
 ### Quickstart
 
-#### `test.py` 
+#### `play.py` 
 
-This entrypoint allows you to play against a trained AI, pit AIs against eachother or play against baseline random models.
+This entrypoint allows you to play against a trained AI, pit AIs against eachother or play against baseline random models. This will launch a web server as a GUI interface on port 8080.
 
-For example, try the following command to play against a baseline random model in the Flamme Rouge environment.
    ```sh
-   docker-compose exec app python3 test.py -d -g 1 -a best_model base human best_model best_model -e frouge 
+   docker-compose exec app python3 play 
    ```
 
 #### `train.py` 
