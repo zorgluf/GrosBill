@@ -94,22 +94,6 @@ def _gui_board(env, callback):
                             else:
                                 ui.html("<div>&nbsp;</div>").style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
                     ui.html("<div>&nbsp;</div>").style(f'width: 3em; height: 3em;')
-#fix : Traceback (most recent call last):
-#  File "/app/environments/frouge/frouge/envs/render_web.py", line 99, in _gui_board
-#    ui.html("<div>&nbsp;</div>").style(f'width: 100%; {style_border}').tailwind.background_color(bg_c).border_color("black")
-#  File "/home/selfplay/.local/lib/python3.10/site-packages/nicegui/elements/html.py", line 17, in __init__
-#    super().__init__(tag=tag, content=content)
-#  File "/home/selfplay/.local/lib/python3.10/site-packages/nicegui/elements/mixins/content_element.py", line 15, in __init__
-#    super().__init__(**kwargs)
-# File "/home/selfplay/.local/lib/python3.10/site-packages/nicegui/element.py", line 75, in __init__
-#    self.client = _client or context.get_client()
-#  File "/home/selfplay/.local/lib/python3.10/site-packages/nicegui/context.py", line 28, in get_client
-#    return get_slot().parent.client
-#  File "/home/selfplay/.local/lib/python3.10/site-packages/nicegui/context.py", line 20, in get_slot
-#    raise RuntimeError('The current slot cannot be determined because the slot stack for this task is empty.\n'
-#RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
-#This may happen if you try to create UI from a background task.
-#To fix this, enter the target slot explicitly using `with container_element:`.
             #blank line
             ui.separator()
 
@@ -149,29 +133,29 @@ def _gui_players(env: FlammeRougeEnv):
 def _gui_human_actions(env: FlammeRougeEnv, callback):
     with ui.row().bind_visibility_from(env, 'done', backward=lambda x: not x):
         with ui.column():
-            ui.label("").bind_text_from(env,"current_player_num",backward=lambda x: f"Human player {x+1} turn")
-            ui.label("").bind_visibility_from(env,"phase",backward=lambda x: x == 0).bind_text_from(env.current_player.s_position,"col",backward=lambda x:  "Place your Sprinteur (click on a starting cell)" if x == -1 else "Place your Rouleur (click on a starting cell)")
-            with ui.row().bind_visibility_from(env,"phase",backward=lambda p: p==1):
+            ui.label("").bind_text_from(env,"current_player",backward=lambda x: f"Human player {x+1} turn")
+            ui.label("").bind_visibility_from(env,"phase",backward=lambda p: (p == 0) and (env.pov_player == env.current_player)).bind_text_from(env.current_player_obj.s_position,"col",backward=lambda x:  "Place your Sprinteur (click on a starting cell)" if x == -1 else "Place your Rouleur (click on a starting cell)")
+            with ui.row().bind_visibility_from(env,"phase",backward=lambda p: (p==1) and (env.pov_player == env.current_player)):
                 with ui.button("Choose Sprinter deck", on_click=lambda:_on_select_sprinteur_deck(env, callback)):
-                    _element_sprinteur(_get_player_color(env.current_player_num+1)).style("width: 100%;")
+                    _element_sprinteur(_get_player_color(env.current_player+1)).style("width: 100%;")
                 with ui.button("Choose Rouleur deck", on_click=lambda:_on_select_rouleur_deck(env, callback)):
-                    _element_rouleur(_get_player_color(env.current_player_num+1)).style("width: 100%;")
-            with ui.row().bind_visibility_from(env,"phase",backward=lambda p: p==2):
-                if env.current_player.hand_order[env.hand_number] == 'r':
+                    _element_rouleur(_get_player_color(env.current_player+1)).style("width: 100%;")
+            with ui.row().bind_visibility_from(env,"phase",backward=lambda p: (p==2) and (env.pov_player == env.current_player)):
+                if env.current_player_obj.hand_order[env.hand_number] == 'r':
                     ui.label("Choose Rouleur card")
-                    hand_cards = env.current_player.r_hand
+                    hand_cards = env.current_player_obj.r_hand
                 else:
                     ui.label("Choose Sprinter card")
-                    hand_cards = env.current_player.s_hand
+                    hand_cards = env.current_player_obj.s_hand
                 for c in hand_cards.cards:
                     #TODO : change color button to red for penalty card
                     with ui.button(on_click=lambda c=c: _on_card_selected(c,env,callback)).classes("text-h4 q-px-md"):
                         with ui.column():
                             ui.label(f"{c.value}").classes("text-h4 q-px-lg")
-                            if env.current_player.hand_order[env.hand_number] == 'r':
-                                _element_rouleur(_get_player_color(env.current_player_num+1)).style("width: 100%;")
+                            if env.current_player_obj.hand_order[env.hand_number] == 'r':
+                                _element_rouleur(_get_player_color(env.current_player+1)).style("width: 100%;")
                             else:
-                                _element_sprinteur(_get_player_color(env.current_player_num+1)).style("width: 100%;")
+                                _element_sprinteur(_get_player_color(env.current_player+1)).style("width: 100%;")
     
 
 def init_web(env: FlammeRougeEnv, callback = None):
@@ -184,7 +168,7 @@ def init_web(env: FlammeRougeEnv, callback = None):
     _gui_human_actions(env, callback)
     ui.button("Finish game.", on_click=lambda: callback(-1)).bind_visibility_from(env, "done")
 
-def render_web(env: FlammeRougeEnv, callback):
+def render_web(env: FlammeRougeEnv, callback, **kwargs):
     _gui_board.refresh(env, callback)
     _gui_human_actions.refresh(env, callback)
     _gui_players.refresh(env)

@@ -5,6 +5,9 @@ class GBEnv(gym.Env):
     """ Base class for GrosBill environments.
     see https://gymnasium.farama.org/ for parent class documentation."""
 
+    current_player: int = -1
+    pov_player: int = -1
+
     def reset(self, seed=None, options=None):
         """
         Resets the environment to its initial state.
@@ -29,8 +32,18 @@ class GBEnv(gym.Env):
         info = {}
         return next_state, reward, terminated, truncated, info
 
-    def render(self, mode='human_web'):
-        pass  # Implement rendering if needed (ie updating nicegui elements)
+    def render(self, pov_player: int = -1, mode:str = 'human_web', **kwargs):
+        """
+        Update the render of the environment. Superseeded by subclasses to implement specific rendering logic.
+        Args:
+            pov_player (int, optional): Player number for point of view rendering. -1 set the pov_player as the current player.
+            mode (str, optional): Rendering mode. Defaults to 'human_web'.
+        """
+        if pov_player == -1:
+            pov_player = self.current_player
+        else:
+            self.pov_player = pov_player
+        return
 
     def close(self):
         pass # Implement any cleanup logic if needed

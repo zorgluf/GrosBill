@@ -59,30 +59,30 @@ class FlammeRougeEnv(GBEnv):
         board_array = np.array(self.board.array)
         board_array = np.append(board_array,np.zeros((board_array.shape[0],3,2*self.n_players)),axis=2)
         #add current player position info
-        board_array[self.current_player.r_position.col, self.current_player.r_position.row, MAX_CODE] = 1
-        board_array[self.current_player.s_position.col, self.current_player.s_position.row, MAX_CODE + 1] = 1
+        board_array[self.current_player_obj.r_position.col, self.current_player_obj.r_position.row, MAX_CODE] = 1
+        board_array[self.current_player_obj.s_position.col, self.current_player_obj.s_position.row, MAX_CODE + 1] = 1
         #add location of other players
         i = 0
         for player_num in range(self.n_players):
-            if player_num != self.current_player_num:
+            if player_num != self.current_player:
                 board_array[self.board.players[player_num].r_position.col, self.board.players[player_num].r_position.row, MAX_CODE + 2 + 2*i] = 1
                 board_array[self.board.players[player_num].s_position.col, self.board.players[player_num].s_position.row, MAX_CODE + 3 + 2*i] = 1
                 i += 1
         obs = board_array.reshape(MAX_BOARD_SIZE*3*cell_dim_size)
         #add current player played cards
-        deck = np.add(self.current_player.r_played.array(),self.current_player.s_played.array())
+        deck = np.add(self.current_player_obj.r_played.array(),self.current_player_obj.s_played.array())
         obs = np.append(obs,deck,axis=0)
         #add other player played cards
         for player_num in range(self.n_players):
-            if player_num != self.current_player_num:
+            if player_num != self.current_player:
                 player = self.board.players[player_num]
                 deck = np.add(player.r_played.array(),player.s_played.array())
                 obs = np.append(obs,deck,axis=0)
         #add current player discarded cards
-        deck = np.add(self.current_player.r_discard.array(),self.current_player.s_discard.array())
+        deck = np.add(self.current_player_obj.r_discard.array(),self.current_player_obj.s_discard.array())
         obs = np.append(obs,deck,axis=0)
         #add player's hand
-        hand = np.add(self.current_player.r_hand.array(),self.current_player.s_hand.array())
+        hand = np.add(self.current_player_obj.r_hand.array(),self.current_player_obj.s_hand.array())
         obs = np.append(obs,hand,axis=0)
 
         return obs
@@ -90,9 +90,9 @@ class FlammeRougeEnv(GBEnv):
     def action_masks(self) -> List[bool]:
         legal_actions = np.full(self.action_space.n, False)
         if self.phase == 2:
-            cyclist = self.current_player.hand_order[self.hand_number]
+            cyclist = self.current_player_obj.hand_order[self.hand_number]
             for i in range(len(ALL_CARDS)):
-                if self.current_player.c_hand(cyclist).array()[i] > 0:
+                if self.current_player_obj.c_hand(cyclist).array()[i] > 0:
                     legal_actions[i] = True
 
         elif self.phase == 1:
@@ -119,7 +119,7 @@ class FlammeRougeEnv(GBEnv):
     def from_action_to_starting_position(self, action):
         action = action - len(ALL_CARDS) - 2
         
-        if self.current_player.s_position.col == -1:
+        if self.current_player_obj.s_position.col == -1:
             c_type = 's'
         else:
             c_type = 'r'
@@ -162,8 +162,8 @@ class FlammeRougeEnv(GBEnv):
 
 
     @property
-    def current_player(self):
-        return self.board.players[self.current_player_num]
+    def current_player_obj(self):
+        return self.board.players[self.current_player]
 
     def sort_cyclist_by_pos(self,a,b):
         if a[0].c_pos(a[1]).col > b[0].c_pos(b[1]).col:
@@ -240,43 +240,43 @@ class FlammeRougeEnv(GBEnv):
         else:
             if self.phase == 0: # initial cyclist positioning (start with sprinter)
                 c_type, col, row = self.from_action_to_starting_position(action)
-                self.board.set_cycl_to_square(self.current_player.n, c_type, col, row)
-                if self.current_player.r_position.col != -1:
+                self.board.set_cycl_to_square(self.current_player_obj.n, c_type, col, row)
+                if self.current_player_obj.r_position.col != -1:
                     #change player
-                    self.current_player_num += 1
+                    self.current_player += 1
 
-                if self.current_player_num == self.n_players:
+                if self.current_player == self.n_players:
                     self.phase = 1
-                    self.current_player_num = 0
+                    self.current_player = 0
             
             elif self.phase == 1:
-                self.current_player.hand_order = self.from_action_to_hand_order(action)
+                self.current_player_obj.hand_order = self.from_action_to_hand_order(action)
                 #change player
-                self.current_player_num += 1
+                self.current_player += 1
 
-                if self.current_player_num == self.n_players:
+                if self.current_player == self.n_players:
                     self.draw_cards()
                     self.phase = 2
-                    self.current_player_num = 0
+                    self.current_player = 0
 
 
             elif self.phase == 2:
 
                 #record action to process them afterwards
                 card = self.from_action_to_card(action)
-                if self.current_player.hand_order[self.hand_number] == 'r':  
-                    self.current_player.r_chosen = card
+                if self.current_player_obj.hand_order[self.hand_number] == 'r':  
+                    self.current_player_obj.r_chosen = card
                 else:
-                    self.current_player.s_chosen = card
+                    self.current_player_obj.s_chosen = card
 
                 #change player
-                self.current_player_num += 1
+                self.current_player += 1
 
-                if self.current_player_num == self.n_players:
+                if self.current_player == self.n_players:
                     if self.hand_number == 0: #switch to choosing the card from the second hand
                         self.hand_number = 1
                         self.draw_cards()
-                        self.current_player_num = 0
+                        self.current_player = 0
                         
                     else: #resolve the turn
                         self.hand_number = 0
@@ -286,7 +286,7 @@ class FlammeRougeEnv(GBEnv):
                             #End of game
                             done = True
                             self.done = done
-                            self.current_player_num = 0
+                            self.current_player = 0
                         else:
                             self.finish_turn()
                         rewards = self.score_game()
@@ -309,7 +309,7 @@ class FlammeRougeEnv(GBEnv):
             player.s_hand = Deck()
 
         #reset current player
-        self.current_player_num = 0
+        self.current_player = 0
         # self.draw_cards()
         self.turns_taken += 1
 
@@ -324,8 +324,6 @@ class FlammeRougeEnv(GBEnv):
         for c in self.cyclists:
             self.board.set_cycl_to_pos(c[0].n,c[1],first_col)
 
-
-    
     def draw_cards(self):
         for player in self.board.players:
             if player.hand_order[self.hand_number] == 'r':
@@ -365,7 +363,7 @@ class FlammeRougeEnv(GBEnv):
             player.s_deck.shuffle()
             self.board.add_player(player)
             player_id += 1
-        self.current_player_num = 0
+        self.current_player = 0
         self.turns_taken = 0
         
 
@@ -388,12 +386,8 @@ class FlammeRougeEnv(GBEnv):
     def nicegui_page(self):
         init_web(self)
 
-
     def render(self, **kwargs):
+        super().render(**kwargs)
         render_web(self, **kwargs)
       
-    def close(self):
-        if self.render_mode == "human_web":
-            #time to render last update
-            sleep(2)
-            app.shutdown()
+

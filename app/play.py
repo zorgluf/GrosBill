@@ -15,10 +15,10 @@ def play_step(env: GBEnv, agents: List[Agent], human_action = None, choose_best_
   done = False
   while not done:
 
-    current_player = agents[env.current_player_num]
+    current_player = agents[env.current_player]
     if current_player.name == 'human':
       if human_action == None:
-        env.render(callback=lambda a: play_step(env, agents, a))
+        env.render(callback=lambda a: play_step(env, agents, a), pov_player = env.current_player)
         return
       else:
         action = human_action
@@ -28,7 +28,7 @@ def play_step(env: GBEnv, agents: List[Agent], human_action = None, choose_best_
 
     _, _, done, _ , _ = env.step(action)
   
-  env.render(callback=lambda a: play_step(env, agents, a))
+  env.render(callback=lambda a: play_step(env, agents, a), pov_player = env.current_player)
 
 def load_agents(env, agent_names, device):
 
