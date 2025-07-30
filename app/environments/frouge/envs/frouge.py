@@ -31,14 +31,15 @@ class FlammeRougeEnv(GBEnv):
     ACTION_SELECT_SPRINTEUR_DECK = len(ALL_CARDS)
     ACTION_SELECT_ROULEUR_DECK = len(ALL_CARDS) + 1
 
-    def __init__(self, verbose = False, manual = False, render_mode = 'human_web'):
-        super(FlammeRougeEnv, self).__init__()
-        self.name = 'frouge'
+    PHASE_PLACING_CYCLISTS = 0
+    PHASE_CHOOSE_HAND = 1
+    PHASE_CHOOSE_CARD = 2
+    PHASE_AFTER_MOVE = 3
 
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
-        self.render_mode = render_mode
+    def __init__(self, player_names: list[str] = None):
+        super(FlammeRougeEnv, self).__init__(n_players=5, player_names=player_names)
+        self.name = 'frouge'
         
-        self.n_players = 5
         self.board: Board
         self.board = None
         self.penalty = list()
@@ -89,22 +90,19 @@ class FlammeRougeEnv(GBEnv):
 
     def action_masks(self) -> List[bool]:
         legal_actions = np.full(self.action_space.n, False)
-        if self.phase == 2:
+        if self.phase == self.PHASE_CHOOSE_CARD:
             cyclist = self.current_player_obj.hand_order[self.hand_number]
             for i in range(len(ALL_CARDS)):
                 if self.current_player_obj.c_hand(cyclist).array()[i] > 0:
                     legal_actions[i] = True
-
-        elif self.phase == 1:
+        elif self.phase == self.PHASE_CHOOSE_HAND:
             legal_actions[len(ALL_CARDS):(len(ALL_CARDS)+2)] = True
-        elif self.phase == 0:
+        elif self.phase == self.PHASE_PLACING_CYCLISTS:
             for i in range(MAX_START_SPACES):
                 col = i // 3
                 row = i % 3
                 if self.board.get_cell(col, row) == CS and self.board.is_empty(col, row):
                     legal_actions[len(ALL_CARDS) + 2 + i] = True
-        else:
-            raise Exception(f'Invalid phase: {self.phase}')
 
         return legal_actions
 
@@ -163,6 +161,9 @@ class FlammeRougeEnv(GBEnv):
 
     @property
     def current_player_obj(self):
+        if self.current_player == -1:
+            #return dummy player if no current player
+            return Player(-1, name='No player')
         return self.board.players[self.current_player]
 
     def sort_cyclist_by_pos(self,a,b):
@@ -176,7 +177,7 @@ class FlammeRougeEnv(GBEnv):
             return 1
         return 0
 
-    def resolve_turn(self):
+    def resolve_move(self):
         #build cyclist list
         self.cyclists.sort(key=cmp_to_key(self.sort_cyclist_by_pos),reverse=True)
         #move each cyclist
@@ -189,6 +190,8 @@ class FlammeRougeEnv(GBEnv):
             #if finish, last turn
             if self.board.get_cell(player.c_pos(c_type).col, 0) == CF:
                 self.last_turn = True
+
+    def resolve_aspiration(self):
         #process aspiration
         self.cyclists.sort(key=cmp_to_key(self.sort_cyclist_by_pos))
         c_group = list()
@@ -235,65 +238,67 @@ class FlammeRougeEnv(GBEnv):
         rewards = [0] * self.n_players
 
         # check move legality
-        if self.action_masks()[action] == False:
+        if (action != -1) and (self.action_masks()[action] == False):
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
-        else:
-            if self.phase == 0: # initial cyclist positioning (start with sprinter)
-                c_type, col, row = self.from_action_to_starting_position(action)
-                self.board.set_cycl_to_square(self.current_player_obj.n, c_type, col, row)
-                if self.current_player_obj.r_position.col != -1:
-                    #change player
-                    self.current_player += 1
 
-                if self.current_player == self.n_players:
-                    self.phase = 1
-                    self.current_player = 0
-            
-            elif self.phase == 1:
-                self.current_player_obj.hand_order = self.from_action_to_hand_order(action)
+        if self.phase == self.PHASE_PLACING_CYCLISTS:
+            c_type, col, row = self.from_action_to_starting_position(action)
+            self.board.set_cycl_to_square(self.current_player_obj.n, c_type, col, row)
+            if self.current_player_obj.r_position.col != -1:
                 #change player
                 self.current_player += 1
 
-                if self.current_player == self.n_players:
-                    self.draw_cards()
-                    self.phase = 2
-                    self.current_player = 0
+            if self.current_player == self.n_players:
+                self.phase = self.PHASE_CHOOSE_HAND
+                self.current_player = 0
+        
+        elif self.phase == self.PHASE_CHOOSE_HAND:
+            self.current_player_obj.hand_order = self.from_action_to_hand_order(action)
+            #change player
+            self.current_player += 1
+
+            if self.current_player == self.n_players:
+                self.draw_cards()
+                self.phase = self.PHASE_CHOOSE_CARD
+                self.current_player = 0
 
 
-            elif self.phase == 2:
-
-                #record action to process them afterwards
-                card = self.from_action_to_card(action)
-                if self.current_player_obj.hand_order[self.hand_number] == 'r':  
-                    self.current_player_obj.r_chosen = card
-                else:
-                    self.current_player_obj.s_chosen = card
-
-                #change player
-                self.current_player += 1
-
-                if self.current_player == self.n_players:
-                    if self.hand_number == 0: #switch to choosing the card from the second hand
-                        self.hand_number = 1
-                        self.draw_cards()
-                        self.current_player = 0
-                        
-                    else: #resolve the turn
-                        self.hand_number = 0
-                        self.phase = 1 #2
-                        self.resolve_turn()
-                        if self.last_turn:
-                            #End of game
-                            done = True
-                            self.done = done
-                            self.current_player = 0
-                        else:
-                            self.finish_turn()
-                        rewards = self.score_game()
-
+        elif self.phase == self.PHASE_CHOOSE_CARD:
+            #record action to process them afterwards
+            card = self.from_action_to_card(action)
+            if self.current_player_obj.hand_order[self.hand_number] == 'r':  
+                self.current_player_obj.r_chosen = card
             else:
-                raise Exception(f'Invalid phase: {self.phase}')
+                self.current_player_obj.s_chosen = card
 
+            #change player
+            self.current_player += 1
+
+            if self.current_player == self.n_players:
+                if self.hand_number == 0: #switch to choosing the card from the second hand
+                    self.hand_number = 1
+                    self.draw_cards()
+                    self.current_player = 0
+                    
+                else: #resolve the turn
+                    self.hand_number = 0
+                    self.current_player = -1
+                    self.phase = self.PHASE_AFTER_MOVE
+                    self.resolve_move()
+
+        elif self.phase == self.PHASE_AFTER_MOVE:
+            self.resolve_aspiration()
+            if self.last_turn:
+                #End of game
+                done = True
+                self.done = done
+                self.current_player = 0
+            else:
+                self.finish_turn()
+            rewards = self.score_game()
+
+        if self.current_player == -1:
+            return None, rewards, done, False, self._get_info()
         return self.observation, rewards, done, False, self._get_info()
 
     def finish_turn(self):
@@ -310,10 +315,9 @@ class FlammeRougeEnv(GBEnv):
 
         #reset current player
         self.current_player = 0
-        # self.draw_cards()
         self.turns_taken += 1
-
-
+        # set first phase
+        self.phase = self.PHASE_CHOOSE_HAND
 
     def set_start_positions(self):
         #build cyclists list
@@ -348,7 +352,9 @@ class FlammeRougeEnv(GBEnv):
                 player.s_hand.add(drawn)
     
     def _get_info(self):
-        return {}
+        return { 
+            "next_step_no_action": self.phase == self.PHASE_AFTER_MOVE, 
+            }
 
     def reset(self, seed = None):
         
@@ -358,7 +364,7 @@ class FlammeRougeEnv(GBEnv):
         #reset players
         player_id = 1
         for p in range(self.n_players):
-            player = Player(player_id)
+            player = Player(player_id, name=self.player_names[p])
             player.r_deck.shuffle()
             player.s_deck.shuffle()
             self.board.add_player(player)

@@ -5,8 +5,26 @@ class GBEnv(gym.Env):
     """ Base class for GrosBill environments.
     see https://gymnasium.farama.org/ for parent class documentation."""
 
-    current_player: int = -1
+    current_player: int = -1 #if -1, means no player move yet for next step
     pov_player: int = -1
+    render_mode: str = 'human_web' #default render mode for GrosBill envs
+    n_players: int
+    player_names: list[str] = None
+    done: bool = False #True if the game is finished
+
+    def __init__(self, n_players: int = 2, player_names: list[str] = None):
+        """
+        Initializes the GrosBill environment.
+
+        Args:
+            n_players (int): Number of players in the game.
+        """
+        super().__init__()
+        self.n_players = n_players
+        if player_names == None:
+            self.player_names = [f'Player {i+1}' for i in range(n_players)]
+        else:
+            self.player_names = player_names
 
     def reset(self, seed=None, options=None):
         """
@@ -23,13 +41,15 @@ class GBEnv(gym.Env):
         # Implement the reset logic for the environment in subclasses
         return self.observation_space.sample(), {}
 
-    def step(self, action):
+    def step(self, action: int):
         # Apply the action and return the new state, reward, done, and info
         next_state = self.observation_space.sample()
         reward = 1.0  # Example reward
         terminated = False  # Example termination condition
         truncated = False
-        info = {}
+        info = {
+            "next_step_no_action": False #must return this value. Indicate if the next step need an action from one of the players
+        }
         return next_state, reward, terminated, truncated, info
 
     def render(self, pov_player: int = -1, mode:str = 'human_web', **kwargs):

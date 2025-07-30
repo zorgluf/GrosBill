@@ -4,7 +4,6 @@ if TYPE_CHECKING:
     from .frouge import FlammeRougeEnv
 
 from nicegui import ui
-import threading
 
 from .classes import *
 
@@ -104,7 +103,7 @@ def _gui_players(env: FlammeRougeEnv):
         with ui.grid(columns=6):
             ui.label("-")
             for p in env.board.players:
-                ui.label(f"Player {p.name}").tailwind.text_color(_get_player_color(p.n))
+                ui.label(f"{p.name}").tailwind.text_color(_get_player_color(p.n))
             ui.label("Rouleur")
             for p in env.board.players:
                 card = env.last_played_cards[(p,"r")]
@@ -133,7 +132,7 @@ def _gui_players(env: FlammeRougeEnv):
 def _gui_human_actions(env: FlammeRougeEnv, callback):
     with ui.row().bind_visibility_from(env, 'done', backward=lambda x: not x):
         with ui.column():
-            ui.label("").bind_text_from(env,"current_player",backward=lambda x: f"Human player {x+1} turn")
+            ui.label("").bind_text_from(env,"current_player_obj",backward=lambda x: f"Current player: {x.name}" if x != None else "Current player: None")
             ui.label("").bind_visibility_from(env,"phase",backward=lambda p: (p == 0) and (env.pov_player == env.current_player)).bind_text_from(env.current_player_obj.s_position,"col",backward=lambda x:  "Place your Sprinteur (click on a starting cell)" if x == -1 else "Place your Rouleur (click on a starting cell)")
             with ui.row().bind_visibility_from(env,"phase",backward=lambda p: (p==1) and (env.pov_player == env.current_player)):
                 with ui.button("Choose Sprinter deck", on_click=lambda:_on_select_sprinteur_deck(env, callback)):
@@ -156,17 +155,20 @@ def _gui_human_actions(env: FlammeRougeEnv, callback):
                                 _element_rouleur(_get_player_color(env.current_player+1)).style("width: 100%;")
                             else:
                                 _element_sprinteur(_get_player_color(env.current_player+1)).style("width: 100%;")
-    
 
 def init_web(env: FlammeRougeEnv, callback = None):
     with ui.row().classes("bg-green-1 q-py-md").style("width: 100%;"):
         _gui_board(env, callback)
     with ui.row():
         ui.label("").bind_text_from(env, "turns_taken", backward=lambda x: f"Turn : {x}")
-        ui.label("").bind_text_from(env, "phase", backward=lambda x: "Rider placement" if x == 0 else "Deck choice" if x == 1 else "Card choice")
+        ui.label("").bind_text_from(env, "phase", backward=lambda x: {
+            env.PHASE_PLACING_CYCLISTS: "Rider placement", 
+            env.PHASE_CHOOSE_CARD: "Card choice",
+            env.PHASE_CHOOSE_HAND: "Deck choice",
+            env.PHASE_AFTER_MOVE: "Before aspiration"}.get(x,"Unknown"))
     _gui_players(env)
     _gui_human_actions(env, callback)
-    ui.button("Finish game.", on_click=lambda: callback(-1)).bind_visibility_from(env, "done")
+
 
 def render_web(env: FlammeRougeEnv, callback, **kwargs):
     _gui_board.refresh(env, callback)
