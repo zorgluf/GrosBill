@@ -117,7 +117,7 @@ This entrypoint allows you to start training the AI using selfplay PPO. The unde
 
 For example, you can start training the agent to learn how to play SushiGo with the following command:
    ```sh
-   docker-compose exec app python3 train.py -r -e frouge -t 250 -os 12800 -ob 256
+   docker-compose exec app python3 train.py -r -e frouge -t 0.5 -os 5000 -ob 256
    ```
 *TODO : explain parameters*
 
@@ -164,43 +164,7 @@ In the `/zoo/pretrained/` folder there is a pre-trained `/<game>/best_model.zip`
 
 You can add a new environment by copying and editing an existing environment in the `/environments/` folder.
 
-For the environment to work with the SIMPLE self-play wrapper, the class must contain the following methods (expanding on the standard methods from the OpenAI Gym framework):
-
-`__init__`
-
-In the initiation method, you need to define the usual `action_space` and `observation_space`, as well as two additional variables: 
-  * `n_players` - the number of players in the game
-  * `current_player_num` - an integer that tracks which player is currently active
-   
-
-`step`
-
-The `step` method accepts an `action` from the current active player and performs the necessary steps to update the game environment. It should also it should update the `current_player_num` to the next player, and check to see if an end state of the game has been reached.
-
-
-`reset`
-
-The `reset` method is called to reset the game to the starting state, ready to accept the first action.
-
-
-`render`
-
-The `render` function is called to output a visual or human readable summary of the current game state to the log file.
-
-
-`observation`
-
-The `observation` function returns a numpy array that can be fed as input to the PPO policy network. It should return a numeric representation of the current game state, from the perspective of the current player, where each element of the array is in the range `[-1,1]`.
-
-
-`legal_actions`
-
-The `legal_actions` function returns a numpy vector of the same length as the action space, where 1 indicates that the action is valid and 0 indicates that the action is invalid.
-
-
-Please refer to existing environments for examples of how to implement each method.
-
-You will also need to add the environment to the two functions in `/utils/register.py` - follow the existing examples of environments for the structure.
+For the environment to work with the GrosBill framework, the class must extends the GBEnv class in `utils/env.py`. Read carefully the comments inside this class to use the defined class properties and methods. The knowledge of the [gymnasium Env class](https://gymnasium.farama.org/api/env/) is also required.
 
 ---
 <!-- ROADMAP -->

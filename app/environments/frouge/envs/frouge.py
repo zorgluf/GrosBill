@@ -37,8 +37,7 @@ class FlammeRougeEnv(GBEnv):
     PHASE_AFTER_MOVE = 3
 
     def __init__(self, player_names: list[str] = None):
-        super(FlammeRougeEnv, self).__init__(n_players=5, player_names=player_names)
-        self.name = 'frouge'
+        super(FlammeRougeEnv, self).__init__(name="frouge",n_players=5, player_names=player_names)
         
         self.board: Board
         self.board = None
@@ -139,12 +138,13 @@ class FlammeRougeEnv(GBEnv):
 
 
     def score_game(self):
+        winner_reward = 100
         #get progressions
-        positions = [ p.r_position.col + p.s_position.col for p in self.board.players]
+        positions = [ p.r_position.col + p.s_position.col for p in self.board.players] #max: 144
         #get card values spends
-        spent = [ - p.s_played.sum_values() - p.r_played.sum_values() for p in self.board.players ]
+        spent = [ - p.s_played.sum_values() - p.r_played.sum_values() for p in self.board.players ] #max: -144
         #get penalty cards number
-        penalties = [ - p.nb_penalties()*2 for p in self.board.players ]
+        penalties = [ - p.nb_penalties()*2 for p in self.board.players ] #max: approximately -20
 
         scores = [ sum(x) for x in zip(positions, spent, penalties) ]
 
@@ -153,8 +153,9 @@ class FlammeRougeEnv(GBEnv):
             #get the most advanced user
             pos = [ max((p.r_position.col*3-p.r_position.row),(p.s_position.col*3-p.s_position.row)) for p in self.board.players]
             #give reward for winner
-            scores[np.argmax(pos)] = 1000
+            scores[np.argmax(pos)] = winner_reward
 
+        scores = [ s/winner_reward for s in scores ]
         logger.info(f"Rewards: {scores}")
         return scores
 
@@ -280,7 +281,7 @@ class FlammeRougeEnv(GBEnv):
                     self.draw_cards()
                     self.current_player = 0
                     
-                else: #resolve the turn
+                else: #resolve the move
                     self.hand_number = 0
                     self.current_player = -1
                     self.phase = self.PHASE_AFTER_MOVE

@@ -1,5 +1,3 @@
-# docker-compose exec app python3 train.py -r -e butterfly
-
 import os
 
 import argparse
@@ -9,6 +7,8 @@ import logging
 
 from sb3_contrib import MaskablePPO as PPO1
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.logger import configure
 
@@ -21,86 +21,75 @@ import config
 
 def main(args):
 
-  model_dir = os.path.join(config.MODELDIR, args.env_name)
+    model_dir = os.path.join(config.MODELDIR, args.env_name)
 
-  try:
-    os.makedirs(model_dir)
-  except:
-    pass
-  reset_logs()
-  if args.reset:
-    reset_models(model_dir)
-  logger = configure(config.LOGDIR)
+    try:
+        os.makedirs(model_dir)
+    except:
+        pass
+    reset_logs()
+    if args.reset:
+        reset_models(model_dir)
+    logger = configure(config.LOGDIR)
 
-  if args.debug:
-    logger.set_level(config.DEBUG)
-    logging.basicConfig(level=logging.DEBUG)
-  else:
-    time.sleep(5)
-    logger.set_level(config.INFO)
+    if args.debug:
+        logger.set_level(config.DEBUG)
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        time.sleep(5)
+        logger.set_level(config.INFO)
 
-  set_random_seed(args.seed)
+    set_random_seed(args.seed)
 
-  logger.info('\nSetting up the selfplay training environment opponents...')
-  base_env = get_environment(args.env_name)
-  env = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, verbose = args.verbose, device = args.device)
-  env.logger = logger
+    logger.info('\nSetting up the selfplay training environment opponents...')
+    base_env = get_environment(args.env_name)
+    env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
+                       env_kwargs=dict(opponent_type = args.opponent_type, verbose = args.verbose, device = args.device),
+                       vec_env_cls=SubprocVecEnv)
+    env.logger = logger
 
-  params = {'gamma':args.gamma
-    , 'clip_range':args.clip_param
-      , 'ent_coeff':args.entcoeff
-      , 'n_epochs':args.n_epochs
-      , 'n_steps':args.n_steps
-      , 'batch_size':args.batch_size
-      , 'verbose':1
-      , 'tensorboard_log':config.LOGDIR
-      , 'device': args.device
-  }
+    params = {'gamma':args.gamma
+        , 'clip_range':args.clip_param
+        , 'ent_coeff':args.entcoeff
+        , 'n_epochs':args.n_epochs
+        , 'n_steps':args.n_steps
+        , 'batch_size':args.batch_size
+        , 'verbose':1
+        , 'tensorboard_log':config.LOGDIR
+        , 'device': args.device
+    }
 
-  time.sleep(5) # allow time for the base model to be saved out when the environment is created
+    time.sleep(5) # allow time for the base model to be saved out when the environment is created
 
-  if args.reset or not os.path.exists(os.path.join(model_dir, 'best_model.zip')):
-    logger.info('\nLoading the base PPO agent to train...')
-    model = PPO1.load(os.path.join(model_dir, 'base.zip'), env, **params)
-  else:
-    logger.info('\nLoading the best_model.zip PPO agent to continue training...')
-    model = PPO1.load(os.path.join(model_dir, 'best_model.zip'), env, **params)
+    if args.reset or not os.path.exists(os.path.join(model_dir, 'best_model.zip')):
+        logger.info('\nLoading the base PPO agent to train...')
+        model = PPO1.load(os.path.join(model_dir, 'base.zip'), env, **params)
+    else:
+        logger.info('\nLoading the best_model.zip PPO agent to continue training...')
+        model = PPO1.load(os.path.join(model_dir, 'best_model.zip'), env, **params)
 
-  #Callbacks
-  logger.info('\nSetting up the selfplay evaluation environment opponents...')
-  callback_args = {
-    'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, verbose = args.verbose, device = args.device),
-    'best_model_save_path' : config.TMPMODELDIR,
-    'log_path' : config.LOGDIR,
-    'eval_freq' : args.eval_freq,
-    'n_eval_episodes' : args.n_eval_episodes,
-    'deterministic' : False,
-    'render' : True,
-    'verbose' : 0
-  }
+    #Callbacks
+    logger.info('\nSetting up the selfplay evaluation environment opponents...')
+    callback_args = {
+        'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, verbose = args.verbose, device = args.device),
+        'best_model_save_path' : config.TMPMODELDIR,
+        'log_path' : config.LOGDIR,
+        'eval_freq' : args.eval_freq,
+        'n_eval_episodes' : args.n_eval_episodes,
+        'deterministic' : False,
+        'render' : True,
+        'verbose' : 0
+    }
+        
+    # Evaluate the agent against previous versions
+    eval_callback = SelfPlayCallback(args.opponent_type, args.threshold, args.env_name, **callback_args)
 
-  if args.rules:  
-    logger.info('\nSetting up the evaluation environment against the rules-based agent...')
-    # Evaluate against a 'rules' agent as well
-    eval_actual_callback = MaskableEvalCallback(
-      eval_env = selfplay_wrapper(base_env)(opponent_type = 'rules', verbose = args.verbose, logger = logger),
-      eval_freq=1,
-      n_eval_episodes=args.n_eval_episodes,
-      deterministic = args.best,
-      render = True,
-      verbose = 0
-    )
-    callback_args['callback_on_new_best'] = eval_actual_callback
-    
-  # Evaluate the agent against previous versions
-  eval_callback = SelfPlayCallback(args.opponent_type, args.threshold, args.env_name, **callback_args)
+    logger.info('\nSetup complete - commencing learning...\n')
 
-  logger.info('\nSetup complete - commencing learning...\n')
+    model.learn(total_timesteps=int(1e9), callback=[eval_callback], reset_num_timesteps = False, tb_log_name="tb")
 
-  model.learn(total_timesteps=int(1e9), callback=[eval_callback], reset_num_timesteps = False, tb_log_name="tb")
-
-  env.close()
-  del env
+    env.close()
+    del env
 
 
 def cli() -> None:
@@ -116,13 +105,11 @@ def cli() -> None:
   parser.add_argument("--reset", "-r", action = 'store_true', default = False
                 , help="Start retraining the model from scratch")
   parser.add_argument("--opponent_type", "-o", type = str, default = 'mostly_best'
-              , help="best / mostly_best / random / base / rules - the type of opponent to train against")
+              , help="best / mostly_best / random / base - the type of opponent to train against")
   parser.add_argument("--debug", "-d", action = 'store_true', default = False
               , help="Debug logging")
   parser.add_argument("--verbose", "-v", action = 'store_true', default = False
               , help="Show observation in debug output")
-  parser.add_argument("--rules", "-ru", action = 'store_true', default = False
-              , help="Evaluate on a ruled-based agent")
   parser.add_argument("--best", "-b", action = 'store_true', default = False
               , help="Uses best moves when evaluating agent against rules-based agent")
   parser.add_argument("--env_name", "-e", type = str, default = 'tictactoe'
@@ -130,26 +117,27 @@ def cli() -> None:
   parser.add_argument("--seed", "-s",  type = int, default = 17
             , help="Random seed")
 
-  #TODO : optimize params
   parser.add_argument("--eval_freq", "-ef",  type = int, default = 10240
-            , help="How many timesteps should each actor contribute before the agent is evaluated?")
+            , help="How many timesteps should each actor contribute before the agent is evaluated. Default value is fine for most games.")
   parser.add_argument("--n_eval_episodes", "-ne",  type = int, default = 100
-            , help="How many episodes should each actor contirbute to the evaluation of the agent")
+            , help="How many episodes should each actor contirbute to the evaluation of the agent. Default value is fine for most games.")
   parser.add_argument("--threshold", "-t",  type = float, default = 0.2
-            , help="What score must the agent achieve during evaluation to 'beat' the previous version?")
+            , help="What score/reward must the agent achieve during evaluation to 'beat' the previous version and generate a new best model.")
   parser.add_argument("--gamma", "-g",  type = float, default = 0.99
-            , help="The value of gamma in PPO")
+            , help="The value of gamma in PPO (0.99: long term reward, 0.95: short term reward)")
   parser.add_argument("--clip_param", "-c",  type = float, default = 0.2
-            , help="The clip paramater in PPO")
-  parser.add_argument("--entcoeff", "-ent",  type = float, default = 0.0
-            , help="The entropy coefficient in PPO")
+            , help="The clip paramater in PPO (0.1: Very cautious updates, more stable but slower learning, 0.3: More aggressive updates, faster learning but less stable)")
+  parser.add_argument("--entcoeff", "-ent",  type = float, default = 0.05
+            , help="The entropy coefficient in PPO (0.0: No exploration pressure → fast convergence, but risk of local optima, 0.01: Slight exploration encouragement, 0.05–0.1: Balanced exploration, >0.2: Strong exploration → can hurt performance if too random.)")
 
   parser.add_argument("--n_epochs", "-oe",  type = int, default = 10
-            , help="The number of epoch to train the PPO agent per batch")
+            , help="The number of epoch to train the PPO agent per batch. Default value is fine for most games.")
+  parser.add_argument("--n_envs", "-n_envs",  type = int, default = 1
+            , help="The number of envs to run in parallel.")
   parser.add_argument("--n_steps", "-os",  type = int, default = 2048
-            , help="The step size for the PPO optimiser")
+            , help="The step size for the PPO optimiser. Depends on the average number of step inside the game. A good value is 100*avg(game_length).")
   parser.add_argument("--batch_size", "-ob",  type = int, default = 128
-            , help="The minibatch size in the PPO optimiser")
+            , help="The minibatch size in the PPO optimiser. As much as your hardware can handle.")
 
   parser.add_argument("--device", "-dev",  type = str, default = "cpu"
             , help="The device to use")

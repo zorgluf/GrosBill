@@ -11,15 +11,19 @@ class GBEnv(gym.Env):
     n_players: int
     player_names: list[str] = None
     done: bool = False #True if the game is finished
+    name: str = '' #name of the game, as declared inside the environment directory
 
-    def __init__(self, n_players: int = 2, player_names: list[str] = None):
+    def __init__(self, name, n_players: int = 2, player_names: list[str] = None):
         """
         Initializes the GrosBill environment.
 
         Args:
+            name (str): Name of the game, as declared inside the environment directory.
             n_players (int): Number of players in the game.
+            player_names (list[str], optional): List of player names. Defaults to None.
         """
         super().__init__()
+        self.name = name
         self.n_players = n_players
         if player_names == None:
             self.player_names = [f'Player {i+1}' for i in range(n_players)]
