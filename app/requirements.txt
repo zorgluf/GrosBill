@@ -9,3 +9,4 @@ opencv-python
 shimmy
 sb3-contrib
 nicegui
+stable-baselines3[extra]

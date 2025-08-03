@@ -77,7 +77,7 @@ def main(args):
         'eval_freq' : args.eval_freq,
         'n_eval_episodes' : args.n_eval_episodes,
         'deterministic' : False,
-        'render' : True,
+        'render' : False,
         'verbose' : 0
     }
         
@@ -86,7 +86,7 @@ def main(args):
 
     logger.info('\nSetup complete - commencing learning...\n')
 
-    model.learn(total_timesteps=int(1e9), callback=[eval_callback], reset_num_timesteps = False, tb_log_name="tb")
+    model.learn(total_timesteps=int(1e9), callback=[eval_callback], reset_num_timesteps = False, tb_log_name="tb", progress_bar=True)
 
     env.close()
     del env

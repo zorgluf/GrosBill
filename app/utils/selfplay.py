@@ -77,7 +77,7 @@ def selfplay_wrapper(env: GBEnv):
                     observation, reward, done, truncated, info = super(SelfPlayEnv, self).step(action)
                     sum_reward += reward[self.agent_player_num]
                     #continue if next step need no action
-                    if info['next_step_no_action'] == False:
+                    if (info['next_step_no_action'] == False) or done:
                         break
                     else:
                         action = -1  # no action, just continue the game
@@ -93,7 +93,7 @@ def selfplay_wrapper(env: GBEnv):
                 observation, reward, done, truncated, info = super(SelfPlayEnv, self).step(action)
                 agent_reward += reward[self.agent_player_num]
                 #continue if next step need no action
-                if info['next_step_no_action'] == False:
+                if (info['next_step_no_action'] == False) or done:
                     break
                 else:
                     action = -1  # no action, just continue the game
