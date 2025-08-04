@@ -1,5 +1,9 @@
 FROM python:3.10
 
+#fix for import cv2
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install libgl1-mesa-glx
+
 EXPOSE 8080
 
 RUN useradd -ms /bin/bash selfplay
