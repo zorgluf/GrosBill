@@ -3,18 +3,18 @@ import numpy as np
 from shutil import copyfile
 
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-import logging as logger
 
 from utils.files import get_best_model_name, get_model_stats
 
 import config
 
 class SelfPlayCallback(MaskableEvalCallback):
-  def __init__(self, opponent_type, threshold, env_name, *args, **kwargs):
+  def __init__(self, opponent_type, threshold, env_name, logger, *args, **kwargs):
     super(SelfPlayCallback, self).__init__(*args, **kwargs)
+    self.log = logger
     self.opponent_type = opponent_type
     self.model_dir = os.path.join(config.MODELDIR, env_name)
-    self.generation, self.base_timesteps, pbmr, bmr = get_model_stats(get_best_model_name(env_name))
+    self.generation, self.base_timesteps, bmr = get_model_stats(get_best_model_name(env_name))
 
     #reset best_mean_reward because this is what we use to extract the rewards from the latest evaluation by each agent
     self.best_mean_reward = -np.inf
@@ -28,13 +28,13 @@ class SelfPlayCallback(MaskableEvalCallback):
 
       result = super(SelfPlayCallback, self)._on_step() #this will set self.best_mean_reward to the reward from the evaluation as it's previously -np.inf
 
-      logger.info("Eval num_timesteps={}, episode_reward={:.2f}".format(self.num_timesteps, self.best_mean_reward))
-      logger.info("Total episodes ran={}".format(self.n_eval_episodes))
+      self.log.info("Eval num_timesteps={}, episode_reward={:.2f}".format(self.num_timesteps, self.best_mean_reward))
+      self.log.info("Total episodes ran={}".format(self.n_eval_episodes))
 
       #compare the latest reward against the threshold
       if result and self.best_mean_reward > self.threshold:
         self.generation += 1
-        logger.info(f"New best model: {self.generation}\n")
+        self.log.info(f"New best model: {self.generation}\n")
 
         generation_str = str(self.generation).zfill(5)
         rewards_str = str(round(self.best_mean_reward,3))

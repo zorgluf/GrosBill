@@ -23,6 +23,7 @@ def selfplay_wrapper(env: GBEnv):
             # incremental load of new model
             best_model_name = get_best_model_name(self.name)
             if self.best_model_name != best_model_name:
+                self.logger.info(f'Using new best model: {best_model_name}')
                 self.opponent_models.append(load_model(self, best_model_name, self.device ))
                 self.best_model_name = best_model_name
 
@@ -37,7 +38,7 @@ def selfplay_wrapper(env: GBEnv):
 
             elif self.opponent_type == 'mostly_best':
                 j = random.uniform(0,1)
-                if j < 0.7:
+                if j < 0.8:
                     self.opponent_agent = Agent('ppo_opponent', self.opponent_models[-1])  
                 else:
                     start = 0

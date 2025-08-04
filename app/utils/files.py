@@ -114,15 +114,13 @@ def get_model_stats(filename):
     if filename is None:
         generation = 0
         timesteps = 0
-        best_rules_based = -np.inf
         best_reward = -np.inf
     else:
         stats = filename.split('_')
         generation = int(stats[2])
-        best_rules_based = float(stats[3])
-        best_reward = float(stats[4])
-        timesteps = int(stats[5])
-    return generation, timesteps, best_rules_based, best_reward
+        best_reward = float(stats[3])
+        timesteps = int(stats[4])
+    return generation, timesteps, best_reward
 
 
 def reset_logs():
