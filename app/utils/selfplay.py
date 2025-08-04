@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import random
-import logging as logger
 
 from utils.files import load_model, load_all_models, get_best_model_name
 from utils.agents import Agent
@@ -11,14 +10,16 @@ from utils.env import GBEnv
 def selfplay_wrapper(env: GBEnv):
     class SelfPlayEnv(env):
         # wrapper over the normal single player env, but loads the best self play model
-        def __init__(self, opponent_type, verbose, device):
+        def __init__(self, opponent_type, logger, device):
             super(SelfPlayEnv, self).__init__()
             self.device = device
             self.opponent_type = opponent_type
             self.opponent_models = load_all_models(self, device)
             self.best_model_name = get_best_model_name(self.name)
+            self.logger = logger
 
         def setup_opponents(self):
+            self.logger.debug(f'Setting up self play opponents for {self.name} with opponent type: {self.opponent_type}')
             # incremental load of new model
             best_model_name = get_best_model_name(self.name)
             if self.best_model_name != best_model_name:

@@ -30,23 +30,26 @@ def main(args):
     reset_logs()
     if args.reset:
         reset_models(model_dir)
-    logger = configure(config.LOGDIR)
+    logger = logging.getLogger(__name__)
+    ConsoleOutputHandler = logging.StreamHandler()
+    logger.addHandler(ConsoleOutputHandler)
 
     if args.debug:
-        logger.set_level(config.DEBUG)
+        logger.setLevel(config.DEBUG)
         logging.basicConfig(level=logging.DEBUG)
     else:
         time.sleep(5)
-        logger.set_level(config.INFO)
+        logger.setLevel(config.INFO)
 
     set_random_seed(args.seed)
 
     logger.info('\nSetting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
-    env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
-                       env_kwargs=dict(opponent_type = args.opponent_type, verbose = args.verbose, device = args.device),
-                       vec_env_cls=SubprocVecEnv)
-    env.logger = logger
+    # Using vec_env for parallel training do not work with selfplay_wrapper, due to not calling reset() function
+    #env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
+    #                   env_kwargs=dict(opponent_type = args.opponent_type, logger = logger, device = args.device),
+    #                   vec_env_cls=SubprocVecEnv)
+    env = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device)
 
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
@@ -71,7 +74,7 @@ def main(args):
     #Callbacks
     logger.info('\nSetting up the selfplay evaluation environment opponents...')
     callback_args = {
-        'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, verbose = args.verbose, device = args.device),
+        'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device),
         'best_model_save_path' : config.TMPMODELDIR,
         'log_path' : config.LOGDIR,
         'eval_freq' : args.eval_freq,
@@ -132,8 +135,8 @@ def cli() -> None:
 
   parser.add_argument("--n_epochs", "-oe",  type = int, default = 10
             , help="The number of epoch to train the PPO agent per batch. Default value is fine for most games.")
-  parser.add_argument("--n_envs", "-n_envs",  type = int, default = 1
-            , help="The number of envs to run in parallel.")
+  #parser.add_argument("--n_envs", "-n_envs",  type = int, default = 1
+  #          , help="The number of envs to run in parallel.")
   parser.add_argument("--n_steps", "-os",  type = int, default = 2048
             , help="The step size for the PPO optimiser. Depends on the average number of step inside the game. A good value is 100*avg(game_length).")
   parser.add_argument("--batch_size", "-ob",  type = int, default = 128

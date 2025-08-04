@@ -13,7 +13,5 @@ COPY --chown=selfplay:selfplay ./app/zoo/pretrained ./zoo/pretrained
 
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.python.org/simple
-RUN pip install --no-cache-dir -e ./environments/frouge
 
-CMD python3 web_play.py -a best_model best_model human best_model best_model -e frouge
-#CMD bash
+CMD python3 play.py
