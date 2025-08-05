@@ -80,19 +80,12 @@ Install Docker and Docker Compose to make use of the `docker-compose.yml` file
    git clone https://github.com/zorgluf/GrosBill.git
    cd GrosBill
    ```
-2. Build the image and 'up' the container.
-   ```sh
-   docker-compose up -d
-   ```
-3. Choose an environment to install in the container (`tictactoe`, `connect4`, `sushigo`, `geschenkt`, `butterfly`, and `flamme rouge` are currently implemented)
-   ```sh
-   bash ./scripts/install_env.sh sushigo
-   ```
 
 Build standalone docker play images :
   ```sh
-  docker build . -t simple-play-frouge -f app/Dockerfile_play_frouge
+  docker build . -t simple-play-frouge -f Dockerfile_play_frouge
   ```
+or launch command directly from the *app* directory.
 ---
 <!-- TUTORIAL -->
 ## Tutorial
@@ -108,7 +101,7 @@ This is a quick tutorial to allow you to start using the two entrypoints into th
 This entrypoint allows you to play against a trained AI, pit AIs against eachother or play against baseline random models. This will launch a web server as a GUI interface on port 8080.
 
    ```sh
-   docker-compose exec app python3 play 
+   python3 play 
    ```
 
 #### `train.py` 
@@ -117,7 +110,7 @@ This entrypoint allows you to start training the AI using selfplay PPO. The unde
 
 For example, you can start training the agent to learn how to play SushiGo with the following command:
    ```sh
-   docker-compose exec app python3 train.py -r -e frouge -t 0.5 -os 5000 -ob 256
+   python3 train.py -r -e frouge -t 0.5 -os 5000 -ob 256
    ```
 *TODO : explain parameters*
 
@@ -128,7 +121,7 @@ Training runs until you kill the process manually (e.g. with Ctrl-C), so do that
 You can now use the `test.py` entrypoint to play 100 games silently between the current `best_model.zip` and the random baselines model as follows:
 
   ```sh
-  docker-compose exec app python3 test.py -g 100 -a best_model base base base base -e frouge 
+  python3 test.py -g 100 -a best_model base base base base -e frouge 
   ```
 
 You should see that the best_model scores better than the two baseline model opponents. 
@@ -139,7 +132,7 @@ Played 100 games: {'best_model_btkce': 31.0, 'base_sajsi': -15.5, 'base_poqaj': 
 You can continue training the agent by dropping the `-r` reset flag from the `train.py` entrypoint arguments - it will just pick up from where it left off.
 
    ```sh
-   docker-compose exec app python3 train.py -e frouge -t 250 -os 12800 -ob 256
+   python3 train.py -e frouge -t 250 -os 12800 -ob 256
    ```
 
 Congratulations, you've just completed one training cycle for the game Flamme Rouge! The PPO agent will now have to work out a way to beat the model it has just created...

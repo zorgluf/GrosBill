@@ -10,7 +10,6 @@ from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3.common.logger import configure
 
 from utils.callbacks import SelfPlayCallback
 from utils.files import reset_logs, reset_models
@@ -44,10 +43,10 @@ def main(args):
     logger.info('\nSetting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
     # Using vec_env for parallel training do not work with selfplay_wrapper, due to not calling reset() function
-    #env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
-    #                   env_kwargs=dict(opponent_type = args.opponent_type, logger = logger, device = args.device),
-    #                   vec_env_cls=SubprocVecEnv)
-    env = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device)
+    env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
+                       env_kwargs=dict(opponent_type = args.opponent_type, logger = logger, device = args.device),
+                       vec_env_cls=SubprocVecEnv)
+    #env = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device)
 
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
@@ -55,7 +54,7 @@ def main(args):
         , 'n_epochs':args.n_epochs
         , 'n_steps':args.n_steps
         , 'batch_size':args.batch_size
-        , 'verbose':1
+        , 'verbose':0
         , 'tensorboard_log':config.LOGDIR
         , 'device': args.device
     }
@@ -133,8 +132,8 @@ def cli() -> None:
 
   parser.add_argument("--n_epochs", "-oe",  type = int, default = 10
             , help="The number of epoch to train the PPO agent per batch. Default value is fine for most games.")
-  #parser.add_argument("--n_envs", "-n_envs",  type = int, default = 1
-  #          , help="The number of envs to run in parallel.")
+  parser.add_argument("--n_envs", "-n_envs",  type = int, default = 1
+            , help="The number of envs to run in parallel.")
   parser.add_argument("--n_steps", "-os",  type = int, default = 2048
             , help="The step size for the PPO optimiser. Depends on the average number of step inside the game. A good value is 100*avg(game_length).")
   parser.add_argument("--batch_size", "-ob",  type = int, default = 128
