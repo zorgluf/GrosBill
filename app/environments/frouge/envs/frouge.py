@@ -138,7 +138,7 @@ class FlammeRougeEnv(GBEnv):
 
 
     def score_game(self):
-        winner_reward = 100
+        winner_reward = 1000
         #get progressions
         positions = [ p.r_position.col + p.s_position.col for p in self.board.players] #max: 144
         #get card values spends
