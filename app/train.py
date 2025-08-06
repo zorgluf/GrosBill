@@ -4,6 +4,7 @@ import argparse
 import time
 from shutil import copyfile
 import logging
+import random
 
 from sb3_contrib import MaskablePPO as PPO1
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
@@ -29,16 +30,18 @@ def main(args):
     reset_logs()
     if args.reset:
         reset_models(model_dir)
-    logger = logging.getLogger(__name__)
-    ConsoleOutputHandler = logging.StreamHandler()
-    logger.addHandler(ConsoleOutputHandler)
 
+    logger = logging.getLogger(__name__)
     if args.debug:
         logger.setLevel(config.DEBUG)
     else:
         logger.setLevel(config.INFO)
 
-    set_random_seed(args.seed)
+    if args.seed == 0:
+        seed = random.randint(0,1000)
+    else:
+        seed = args.seed
+    set_random_seed(seed)
 
     logger.info('\nSetting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
@@ -114,15 +117,16 @@ def cli() -> None:
               , help="Uses best moves when evaluating agent against rules-based agent")
   parser.add_argument("--env_name", "-e", type = str, default = 'tictactoe'
               , help="Which gym environment to train in: tictactoe, connect4, sushigo, butterfly, geschenkt, frouge")
-  parser.add_argument("--seed", "-s",  type = int, default = 17
-            , help="Random seed")
+  parser.add_argument("--seed", "-s",  type = int, default = 0
+            , help="Random seed. If 0, random")
+  
 
   parser.add_argument("--eval_freq", "-ef",  type = int, default = 10240
             , help="How many timesteps should each actor contribute before the agent is evaluated. Default value is fine for most games.")
   parser.add_argument("--n_eval_episodes", "-ne",  type = int, default = 100
             , help="How many episodes should each actor contirbute to the evaluation of the agent. Default value is fine for most games.")
   parser.add_argument("--threshold", "-t",  type = float, default = 0.2
-            , help="What score/reward must the agent achieve during evaluation to 'beat' the previous version and generate a new best model.")
+            , help="What score/reward must the agent achieve during evaluation to 'beat' the previous version and generate a new best model. Choose carefully, depending on the scoring scale of the game.")
   parser.add_argument("--gamma", "-g",  type = float, default = 0.99
             , help="The value of gamma in PPO (0.99: long term reward, 0.95: short term reward)")
   parser.add_argument("--clip_param", "-c",  type = float, default = 0.2
