@@ -106,7 +106,7 @@ def selfplay_wrapper(env: GBEnv):
                     observation, reward, done, truncated, info = package
                     agent_reward += reward
             else:
-                self.setup_opponents()  # reset opponents for next game (cannot be done in reset() if wrapped in vec env)
+                observation, info = self.reset()  # reset for next game (reset not called if wrapped in vec env)
 
             return observation, agent_reward, done, truncated, info
 
