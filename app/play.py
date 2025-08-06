@@ -20,7 +20,11 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
         current_player = agents[env.current_player]
         if current_player.name == 'human':
             if human_action == None:
-                env.render(callback=lambda a: play_step(env, agents, pov_player, a), pov_player = pov_player)
+                env.render(
+                    callback=lambda a: play_step(env, agents, pov_player, a),
+                    pov_player = pov_player,
+                    suggested_action = agents[-1].choose_action(env, choose_best_action=True, mask_invalid_actions=True) if options.suggest else None
+                )
                 _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a))
                 return
             else:
@@ -52,12 +56,18 @@ def load_agents(env, agent_names, device):
             ppo_model = load_model(env, f'{agent}.zip', device)
             agent_obj = Agent(f"{agent} {i}", ppo_model)
         agents.append(agent_obj)
+
+    if options.suggest:
+        # load best agent for suggestion
+        ppo_model = load_model(env, f'best_model.zip', device)
+        agent_obj = Agent(f"Suggest Agent", ppo_model)
+        agents.append(agent_obj)
     
     return agents
 
 class PlayOptions:
 
-    device = 'cpu'
+    suggest = False
 
 @ui.page('/frouge')
 def frouge_page():
@@ -70,7 +80,7 @@ def frouge_page():
     seed = random.randint(0,1000)
     env.reset(seed = seed)
     # load agents
-    agents = load_agents(env, ['human', 'best_model', 'best_model', 'best_model', 'best_model'], options.device)
+    agents = load_agents(env, ['human', 'best_model', 'best_model', 'best_model', 'best_model'], "cpu")
     # start gui
     env.nicegui_page()
     _gui_generic_buttons(env,)
@@ -80,6 +90,8 @@ def frouge_page():
 if __name__ in {"__main__", "__mp_main__"}:
     options = PlayOptions()
     ui.link('Flamme Rouge', frouge_page)
-    ui.toggle(["cpu","cuda"], value="cpu").bind_value(options, 'device')
+    with ui.row():
+        ui.label('Suggest action:')
+        ui.toggle({True:"Yes",False:"No"}).bind_value(options, 'suggest')
 
     ui.run(title='GrosBill')

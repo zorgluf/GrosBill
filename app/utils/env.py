@@ -62,6 +62,7 @@ class GBEnv(gym.Env):
         Args:
             pov_player (int, optional): Player number for point of view rendering. -1 set the pov_player as the current player.
             mode (str, optional): Rendering mode. Defaults to 'human_web'.
+            suggested_action (int, optional): Suggested action for human players. Defaults to None.
         """
         if pov_player == -1:
             pov_player = self.current_player

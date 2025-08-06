@@ -129,7 +129,7 @@ def _gui_players(env: FlammeRougeEnv):
     ui.label(f"Player {env.score_game().index(max(env.score_game()))+1} WIN !!!!").bind_visibility_from(env, "done").classes("text-h6").tailwind.text_color("red")
 
 @ui.refreshable
-def _gui_human_actions(env: FlammeRougeEnv, callback):
+def _gui_human_actions(env: FlammeRougeEnv, callback, suggested_action = None):
     with ui.row().bind_visibility_from(env, 'done', backward=lambda x: not x):
         with ui.column():
             ui.label("").bind_text_from(env,"current_player_obj",backward=lambda x: f"Current player: {x.name}" if x != None else "Current player: None")
@@ -137,8 +137,12 @@ def _gui_human_actions(env: FlammeRougeEnv, callback):
             with ui.row().bind_visibility_from(env,"phase",backward=lambda p: (p==1) and (env.pov_player == env.current_player)):
                 with ui.button("Choose Sprinter deck", on_click=lambda:_on_select_sprinteur_deck(env, callback)):
                     _element_sprinteur(_get_player_color(env.current_player+1)).style("width: 100%;")
+                    if suggested_action == env.ACTION_SELECT_SPRINTEUR_DECK:
+                        _element_star().style("width: 10%; position: absolute; top: 0px; right: 0px;")
                 with ui.button("Choose Rouleur deck", on_click=lambda:_on_select_rouleur_deck(env, callback)):
                     _element_rouleur(_get_player_color(env.current_player+1)).style("width: 100%;")
+                    if suggested_action == env.ACTION_SELECT_ROULEUR_DECK:
+                        _element_star().style("width: 10%; position: absolute; top: 0px; right: 0px;")
             with ui.row().bind_visibility_from(env,"phase",backward=lambda p: (p==2) and (env.pov_player == env.current_player)):
                 if env.current_player_obj.hand_order[env.hand_number] == 'r':
                     ui.label("Choose Rouleur card")
@@ -155,6 +159,8 @@ def _gui_human_actions(env: FlammeRougeEnv, callback):
                                 _element_rouleur(_get_player_color(env.current_player+1)).style("width: 100%;")
                             else:
                                 _element_sprinteur(_get_player_color(env.current_player+1)).style("width: 100%;")
+                            if suggested_action == ALL_CARDS.index(c):
+                                _element_star().style("width: 20%; position: absolute; top: 0px; right: 0px;")
 
 def init_web(env: FlammeRougeEnv, callback = None):
     with ui.row().classes("bg-green-1 q-py-md").style("width: 100%;"):
@@ -170,9 +176,9 @@ def init_web(env: FlammeRougeEnv, callback = None):
     _gui_human_actions(env, callback)
 
 
-def render_web(env: FlammeRougeEnv, callback, **kwargs):
+def render_web(env: FlammeRougeEnv, callback, suggested_action = None, **kwargs):
     _gui_board.refresh(env, callback)
-    _gui_human_actions.refresh(env, callback)
+    _gui_human_actions.refresh(env, callback, suggested_action)
     _gui_players.refresh(env)
 
 @ui.refreshable
@@ -186,6 +192,12 @@ def _element_rouleur(color: str):
    <path transform="translate(0 1.25) matrix(1 0 0 1 -235.634 -41.648)" label="Camada 1" fill="{color}" d="M486,70.984C486,87.186 472.866,100.32 456.664,100.32S427.328,87.186 427.328,70.984S440.462,41.648 456.664,41.648S486,54.782 486,70.984zM500.729,183.004C462.656,183.004 431.664,213.996 431.664,252.069S462.656,321.134 500.729,321.134S569.794,290.142 569.794,252.069S538.802,183.004 500.729,183.004zM500.729,196.721C531.394,196.721 556.158,221.404 556.158,252.069S531.395,307.417 500.729,307.417C470.064,307.417 445.381,282.734 445.381,252.069S470.064,196.721 500.729,196.721zM305.949,183.001C267.876,183.001 236.884,213.993 236.884,252.066S267.876,321.131 305.949,321.131S375.014,290.139 375.014,252.066S344.022,183.001 305.949,183.001zM305.949,196.718C336.614,196.718 361.378,221.401 361.378,252.066S336.615,307.414 305.949,307.414C275.284,307.414 250.601,282.731 250.601,252.066S275.284,196.718 305.949,196.718z" id="imagebot_6"/>
   </g>
  </g>
+</svg>'''
+    return ui.html(content)
+
+def _element_star():
+    content = '''<svg viewBox="0 0 300 275" xmlns="http://www.w3.org/2000/svg" version="1.1">
+  <polygon fill="#fdff00" stroke="#605a00" stroke-width="15" points="150,25  179,111 269,111 197,165                     223,251  150,200 77,251  103,165                     31,111 121,111"/>
 </svg>'''
     return ui.html(content)
 

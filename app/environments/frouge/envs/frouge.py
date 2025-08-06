@@ -135,8 +135,6 @@ class FlammeRougeEnv(GBEnv):
 
         return hand_order
 
-
-
     def score_game(self):
         winner_reward = 1000
         #get progressions
