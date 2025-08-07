@@ -13,7 +13,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
 
 from utils.callbacks import SelfPlayCallback
-from utils.files import reset_logs, reset_models
+from utils.files import reset_logs, reset_models, load_model
 from utils.register import get_environment
 from utils.selfplay import selfplay_wrapper
 
@@ -45,6 +45,9 @@ def main(args):
 
     logger.info('\nSetting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
+    if args.reset:
+        #build base model
+        load_model(base_env(), 'base.zip', args.device)
     # Using vec_env for parallel training do not work with selfplay_wrapper, due to not calling reset() function
     env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
                        env_kwargs=dict(opponent_type = args.opponent_type, logger = logger, device = args.device),
