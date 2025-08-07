@@ -106,17 +106,22 @@ This entrypoint allows you to play against a trained AI, pit AIs against eachoth
 
 #### `train.py` 
 
-This entrypoint allows you to start training the AI using selfplay PPO. The underlying PPO engine is from the [Stable Baselines](https://stable-baselines.readthedocs.io/en/master/) package.
+This entrypoint allows you to start training the AI using selfplay PPO. The underlying PPO engine is from the [Stable Baselines](https://stable-baselines3.readthedocs.io/en/master/index.html) package.
 
-For example, you can start training the agent to learn how to play SushiGo with the following command:
+For detailed explanation of training parameters, please read carefuly the help :
    ```sh
-   python3 train.py -r -e frouge -t 0.5 -os 5000 -ob 256
+   python3 train.py --help
    ```
-*TODO : explain parameters*
 
-After 30 or 40 iterations the process should have achieved above the default threshold score of 0.2 and will output a new `best_model.zip` to the `/zoo/frouge` folder. 
+After few minutes the process should have achieved above the default threshold score and will output a new `best_model.zip` to the `/zoo/<env>` folder. Depending on training parameters, it might use this `best_model.zip` for the opponents and train a new model against it. In that case, generating a new "best model" that beats the previous one will significantly take more time.
 
 Training runs until you kill the process manually (e.g. with Ctrl-C), so do that now.
+
+As reference, the following parameters are used for training the best models :
+*  For Flamme Rouge :
+   ```sh
+   python3 train.py -r -e frouge -t 0.6 -os 2048 -ob 1024 -oe 5
+   ```
 
 You can now use the `test.py` entrypoint to play 100 games silently between the current `best_model.zip` and the random baselines model as follows:
 
@@ -131,11 +136,6 @@ Played 100 games: {'best_model_btkce': 31.0, 'base_sajsi': -15.5, 'base_poqaj': 
 
 You can continue training the agent by dropping the `-r` reset flag from the `train.py` entrypoint arguments - it will just pick up from where it left off.
 
-   ```sh
-   python3 train.py -e frouge -t 250 -os 12800 -ob 256
-   ```
-
-Congratulations, you've just completed one training cycle for the game Flamme Rouge! The PPO agent will now have to work out a way to beat the model it has just created...
 
 ---
 <!-- TENSORBOARD -->
