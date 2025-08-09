@@ -13,7 +13,7 @@ class GBEnv(gym.Env):
     done: bool = False #True if the game is finished
     name: str = '' #name of the game, as declared inside the environment directory
 
-    def __init__(self, name, n_players: int = 2, player_names: list[str] = None):
+    def __init__(self, name: str, n_players: int = 2, player_names: list[str] = None):
         """
         Initializes the GrosBill environment.
 
@@ -29,6 +29,7 @@ class GBEnv(gym.Env):
             self.player_names = [f'Player {i+1}' for i in range(n_players)]
         else:
             self.player_names = player_names
+        # Don't forget to set the observation and action spaces in subclasses
 
     def reset(self, seed=None, options=None):
         """
@@ -73,5 +74,12 @@ class GBEnv(gym.Env):
     def close(self):
         pass # Implement any cleanup logic if needed
 
+    def action_masks(self):
+        """
+        Returns a list of legal actions for the current player.
+        This method should be implemented in subclasses to provide specific action masks.
+        """
+        raise NotImplementedError("Subclasses must implement action_masks method.")
+
     def nicegui_page():
-        pass  # Implement NiceGUI page rendering
+        raise NotImplementedError("Subclasses must implement nicegui page rendering.")
