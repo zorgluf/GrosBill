@@ -86,16 +86,60 @@ class SchottenTottenEnv(GBEnv):
                         mask[hand_idx, stone_idx] = False
         return mask
     
+    def score_stone(self, cards: Deck) -> int:
+        """
+        Compute the score of the played cards on a stone. Must have 3 cards in deck
+        """
+        sum = sum([card.value for card in cards])
+        #three of a kind
+        if len(set([card.value for card in cards])) == 1:
+            return 300 + sum
+        if len(set([card.color for card in cards])) == 1:
+            if np.all(np.diff(np.sort([card.value for card in cards])) == 1):
+                #color run
+                return 400 + sum
+            else:
+                #color
+                return 200 + sum
+        if np.all(np.diff(np.sort([card.value for card in cards])) == 1):
+            #run
+            return 100 + sum
+        #sum
+        return sum
+        
+    
     def can_claim_stone(self, stone_idx) -> bool:
         """
         Check if the current player can claim a stone.
         """
         if self.board.stones[stone_idx] != StonePosition.NEUTRAL:
             return False
-        # if 3 card on each side, check if the current player has the best combination
-        #TODO
-        # if other side has 2 cards, and 3 on player side, compute all combination to see if opponent can win
-        #TODO
+        if len(self.board.played_cards[stone_idx][self.current_player]) == 3:
+            if len(self.board.played_cards[stone_idx][PlayerId.PLAYER1 if self.current_player == PlayerId.PLAYER2 else PlayerId.PLAYER2]) == 3:
+                # if 3 card on each side, check if the current player has the best combination
+                score_stone_current = self.score_stone(self.board.played_cards[stone_idx][self.current_player])
+                score_stone_opponent = self.score_stone(self.board.played_cards[stone_idx][PlayerId.PLAYER1 if self.current_player == PlayerId.PLAYER2 else PlayerId.PLAYER2])
+                if score_stone_current > score_stone_opponent:
+                    return True
+                else:
+                    return False
+            else:
+                if len(self.board.played_cards[stone_idx][PlayerId.PLAYER1 if self.current_player == PlayerId.PLAYER2 else PlayerId.PLAYER2]) == 2:
+                    # if other side has 2 cards, and 3 on player side, compute all combination to see if opponent can win
+                    all_not_played_cards = Deck()
+                    all_not_played_cards.add(self.board.main_deck)
+                    all_not_played_cards.add(self.board.players[PlayerId.PLAYER1].hand)
+                    all_not_played_cards.add(self.board.players[PlayerId.PLAYER2].hand)
+                    score_stone_current = self.score_stone(self.board.played_cards[stone_idx][self.current_player])
+                    for card in all_not_played_cards:
+                        # try to play each card on the stone
+                        dummy_stone_cards = Deck()
+                        dummy_stone_cards.add(self.board.played_cards[stone_idx][PlayerId.PLAYER1 if self.current_player == PlayerId.PLAYER2 else PlayerId.PLAYER2])
+                        dummy_stone_cards.add(card)
+                        score_stone_opponent = self.score_stone(dummy_stone_cards)
+                        if score_stone_current < score_stone_opponent:
+                            return False
+                    return True
         return False
 
     def step(self, action: List[int]):
@@ -103,6 +147,8 @@ class SchottenTottenEnv(GBEnv):
         if (action != -1) and (self.action_masks()[action[0], action[1]] == False):
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
         
+        #initial score of the current player
+        init_score = self.compute_score()
         #Play card on stone
         card = self.board.players[self.current_player].hand.draw_one_by_index(action[0])
         self.board.played_cards[action[1]][self.current_player].add(card)
@@ -111,10 +157,31 @@ class SchottenTottenEnv(GBEnv):
             if self.can_claim_stone(stone_idx):
                 self.board.stones[stone_idx] = self.current_player * 2
         #Compute reward
-        #TODO
+        after_score = self.compute_score()
+        reward = after_score - init_score
         #check if we are done
-        #TODO
+        if after_score >= 10:
+            terminated = True
+            self.done = True
+            
         return self.observation, reward, terminated, False, self._get_info()
+    
+    def compute_score(self):
+        """
+        Compute the current virtual score for the current player
+        1 point for each stone claimed, 1 point for each continuous stone claimed
+        10 point if winning the game (3 continuois stones claimed or 5 stones claimed)
+        """
+        score = 0
+        for stone_idx in range(NB_STONES):
+            if self.board.stones[stone_idx] == self.current_player * 2:
+                score += 1
+                #check if continuous stone
+                if stone_idx > 0 and self.board.stones[stone_idx - 1] == self.current_player * 2:
+                    score += 1
+        if score >= 5:
+            score = 10
+        return score  
 
     def render(self, pov_player: int = -1, mode:str = 'human_web', **kwargs):
         """

@@ -84,6 +84,9 @@ class Deck():
     def __len__(self):
         return len(self.cards)
     
+    def __iter__(self):
+        return iter(self.cards)
+    
     def draw_one_by_index(self, i) -> Card:
         return self.cards.pop(i)
     
