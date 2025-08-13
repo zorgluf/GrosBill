@@ -33,20 +33,24 @@ class GBEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         """
-        Resets the environment to its initial state.
+        Resets the environment to its initial state. Must be called by subclasses.
 
         Args:
             seed (int, optional): Seed for random number generation. Defaults to None.
             options (dict, optional): Additional options for environment reset. Defaults to None.
 
         Returns:
-            tuple: A tuple containing the initial observation sampled from the observation space and an empty info dictionary.
+            tuple: A tuple containing the initial observation sampled from the observation space and an info dictionary.
         """
         super().reset(seed=seed, options=options)
+        self.done = False
         # Implement the reset logic for the environment in subclasses
-        return self.observation_space.sample(), {}
+        return None, {}
 
     def step(self, action: int):
+        """
+        Must be implemented in subclasses to apply the action and return the new state, reward, done, and info.
+        """
         # Apply the action and return the new state, reward, done, and info
         next_state = self.observation_space.sample()
         reward = 1.0  # Example reward
@@ -55,6 +59,7 @@ class GBEnv(gym.Env):
         info = {
             "next_step_no_action": False #must return this value. Indicate if the next step need an action from one of the players
         }
+        raise NotImplementedError("Subclasses must implement action_masks method.")
         return next_state, reward, terminated, truncated, info
 
     def render(self, pov_player: int = -1, mode:str = 'human_web', **kwargs):
@@ -81,5 +86,5 @@ class GBEnv(gym.Env):
         """
         raise NotImplementedError("Subclasses must implement action_masks method.")
 
-    def nicegui_page():
+    def nicegui_page(self):
         raise NotImplementedError("Subclasses must implement nicegui page rendering.")

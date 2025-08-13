@@ -87,9 +87,29 @@ def frouge_page():
     # play game
     play_step(env, agents, pov_player=pov_player)
 
+@ui.page('/stotten')
+def stotten_page():
+    #TODO : refactor this to use the same code as frouge_page
+    from environments.stotten.envs.stotten import SchottenTottenEnv
+
+    agents_names = ['human1', 'human2']
+    pov_player = agents_names.index('human1')
+    env = SchottenTottenEnv(player_names=agents_names)
+    # set seed
+    seed = random.randint(0,1000)
+    env.reset(seed = seed)
+    # load agents
+    agents = load_agents(env, ['human', 'human'], "cpu")
+    # start gui
+    env.nicegui_page()
+    _gui_generic_buttons(env,)
+    # play game
+    play_step(env, agents, pov_player=pov_player)
+
 if __name__ in {"__main__", "__mp_main__"}:
     options = PlayOptions()
     ui.link('Flamme Rouge', frouge_page)
+    ui.link('Schotten Totten', stotten_page)
     with ui.row():
         ui.label('Suggest action:')
         ui.toggle({True:"Yes",False:"No"}).bind_value(options, 'suggest')
