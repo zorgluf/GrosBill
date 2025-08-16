@@ -122,6 +122,10 @@ As reference, the following parameters are used for training the best models :
    ```sh
    python3 train.py -r -e frouge -t 0.6 -os 2048 -ob 1024 -oe 5
    ```
+* For Schotten Totten :
+   ```sh
+   python3 train.py -r -e stottent -t 0.7 -os 2048 -ob 1024
+   ```
 
 You can now use the `test.py` entrypoint to play 100 games silently between the current `best_model.zip` and the random baselines model as follows:
 

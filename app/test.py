@@ -69,10 +69,12 @@ def main(args):
 
             current_player = players[env.current_player]
 
-            action = current_player.choose_action(env, choose_best_action = args.best, mask_invalid_actions = True)
+            action = current_player.choose_action(env, choose_best_action = args.best)
             logger.debug(f'Current player name: {current_player.name}, choosing action: {action}')
 
             obs, reward, done, _ , info = env.step(action)
+            logger.debug(f'Rewards: {reward}')
+
             while info['next_step_no_action'] and not done:
                 obs, reward, done, _ , info = env.step(-1)
                 logger.debug(f'No action needed, continuing...')
