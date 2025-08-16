@@ -74,7 +74,7 @@ def selfplay_wrapper(env: GBEnv):
             info = None
 
             while self.current_player != self.agent_player_num:
-                action = self.current_agent.choose_action(self, choose_best_action = False, mask_invalid_actions = False)
+                action = self.current_agent.choose_action(self, choose_best_action = False)
                 while True:
                     observation, reward, done, truncated, info = super(SelfPlayEnv, self).step(action)
                     sum_reward += reward[self.agent_player_num]
