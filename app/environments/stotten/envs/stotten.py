@@ -162,6 +162,8 @@ class SchottenTottenEnv(GBEnv):
 
         # check move legality
         if (type(action) != int) and (self.action_masks()[action[0]] == False or self.action_masks()[action[1] + MAX_CARDS_PER_PLAYER] == False):
+            logger.error(self.observation)
+            logger.error(self.compute_score(self.current_player))
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
         
         #initial score of the current player
@@ -185,13 +187,16 @@ class SchottenTottenEnv(GBEnv):
         #Compute reward for current player
         after_score = self.compute_score(self.current_player)
         reward = [0., 0.]
-        reward[self.current_player] = after_score - init_score
+        #scale reward into [0;1]
+        reward[self.current_player] = (after_score - init_score) / 10
         #check if we are done
-        if after_score >= 1:
+        after_score_opponent = self.compute_score(self.current_opponent)
+        if (after_score >= 10) or (after_score_opponent >= 10):
             terminated = True
             self.done = True
-        #change player
-        self.current_player = abs(self.current_player - 1)
+        else:
+            #change player
+            self.current_player = abs(self.current_player - 1)
 
         return self.observation, reward, terminated, False, self._get_info()
     
@@ -206,11 +211,11 @@ class SchottenTottenEnv(GBEnv):
             if self.board.stones[stone_idx].value == player * 2:
                 score += 1
                 #check if continuous stone
-                if stone_idx > 0 and self.board.stones[stone_idx - 1].value == player * 2:
+                if (stone_idx > 0) and (self.board.stones[stone_idx - 1].value == player * 2):
                     score += 1
         if score >= 5:
             score = 10
-        return score / 10
+        return score
 
     def render(self, **kwargs):
         super().render(**kwargs)

@@ -69,7 +69,7 @@ def selfplay_wrapper(env: GBEnv):
         def continue_game(self):
             observation = None
             sum_reward = 0
-            done = None
+            done = False
             truncated = False
             info = None
 
@@ -106,7 +106,7 @@ def selfplay_wrapper(env: GBEnv):
                     observation, reward, done, truncated, info = package
                     agent_reward += reward
             else:
-                observation, info = self.reset()  # reset for next game (reset not called if wrapped in vec env)
+                _, info = self.reset()  # reset for next game (reset not called if wrapped in vec env)
 
             return observation, agent_reward, done, truncated, info
 

@@ -15,7 +15,7 @@ def _action_play_card(stone_idx:int, play_callback, env: SchottenTottenEnv):
 
 @ui.refreshable
 def _get_card_element(card: Card):
-    with ui.card().tight().style("width:10vw; aspect-ratio: 2 / 3;"):
+    with ui.card().tight().style("width:10vw; aspect-ratio: 1 / 1;"):
         ui.label(f"{card.value}").style("font-size: 10vw; width:100%; text-align: center; line-height: normal").tailwind.text_color(card.color.name.lower())
         ui.label(f"{card.value}").style("width: 10%; position: absolute; top: 0px; right: 0px;").tailwind.text_color(card.color.name.lower())
 
@@ -33,17 +33,17 @@ def _gui_board(env, callback):
         for i in range(NB_STONES):
             with ui.column().on("click",lambda i=i: _action_play_card(i, callback, env)).classes("gap-2"):
                 if (env.current_player == PlayerId.PLAYER1.value and board.stones[i] == StonePosition.PLAYER2) or (env.current_player == PlayerId.PLAYER2.value and board.stones[i] == StonePosition.PLAYER1):
-                    ui.element("div").style("width: 10vw; height:10vh").tailwind.background_color("grey")
+                    ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
                 else:
-                    ui.element("div").style("width: 10vw; height:10vh; border: 2px dashed grey;")
+                    ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if board.stones[i] == StonePosition.NEUTRAL:
-                    ui.element("div").style("width: 10vw; height:10vh").tailwind.background_color("grey")
+                    ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
                 else:
-                    ui.element("div").style("width: 10vw; height:10vh; border: 2px dashed grey;")
+                    ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if (env.current_player == PlayerId.PLAYER1.value and board.stones[i] == StonePosition.PLAYER1) or (env.current_player == PlayerId.PLAYER2.value and board.stones[i] == StonePosition.PLAYER2):
-                    ui.element("div").style("width: 10vw; height:10vh").tailwind.background_color("grey")
+                    ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
                 else:
-                    ui.element("div").style("width: 10vw; height:10vh; border: 2px dashed grey;")
+                    ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
         # Current player's cards on stone
         for i in range(NB_STONES):
             with ui.column().classes("gap-0").style("position: relative; height: 15vw;"):
