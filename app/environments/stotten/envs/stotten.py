@@ -184,10 +184,10 @@ class SchottenTottenEnv(GBEnv):
             self.board.players[self.current_player].hand.add(card)
         #Compute reward for current player
         after_score = self.compute_score(self.current_player)
-        reward = [0, 0]
+        reward = [0., 0.]
         reward[self.current_player] = after_score - init_score
         #check if we are done
-        if after_score >= 10:
+        if after_score >= 1:
             terminated = True
             self.done = True
         #change player
@@ -210,7 +210,7 @@ class SchottenTottenEnv(GBEnv):
                     score += 1
         if score >= 5:
             score = 10
-        return score  
+        return score / 10
 
     def render(self, **kwargs):
         super().render(**kwargs)
