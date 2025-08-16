@@ -2,6 +2,7 @@ import random
 from typing import List
 from enum import Enum
 import numpy as np
+import copy
 
 NB_STONES = 9
 MAX_CARDS_PER_PLAYER = 6
@@ -24,8 +25,11 @@ class Card():
         return self._color
 
 class Deck():
-    def __init__(self, cards: List[Card] = list()):
-        self.cards = list(cards)
+    def __init__(self, cards: List[Card] = None):
+        if cards is None:
+            self.cards = []
+        else:
+            self.cards = cards
     
     def shuffle(self):
         random.shuffle(self.cards)
@@ -42,7 +46,7 @@ class Deck():
                 pass
         return drawn
     
-    def add(self, cards):
+    def add(self, cards: List[Card]):
         for card in cards:
             self.cards.append(card)
                 
@@ -71,7 +75,7 @@ class Player():
             self.name = str(n)
         self._hand = Deck()
 
-    def add_card(self, card):
+    def add_card(self, card: Card):
         """
         Add a card to the player's deck.
         """
@@ -103,7 +107,7 @@ class Board():
         self._players = list()
         self._stones = [ StonePosition.NEUTRAL for _ in range(NB_STONES) ]
         self._played_cards = [ { PlayerId.PLAYER1.value: Deck(), PlayerId.PLAYER2.value: Deck() } for _ in range(NB_STONES) ]
-        self._main_deck = ALL_CARDS
+        self._main_deck = copy.deepcopy(ALL_CARDS)
         self._main_deck.shuffle()
     
     def add_player(self,player):
@@ -123,11 +127,14 @@ class Board():
     @property
     def played_cards(self):
         return self._played_cards
+    @played_cards.setter
+    def played_cards(self, val):
+        self._played_cards = val
     
     @property
     def main_deck(self) -> Deck:
         return self._main_deck
         
-ALL_CARDS = Deck([ Card(i, c) for i in range(1, 9) for c in Color ])
+ALL_CARDS = Deck([ Card(i, c) for i in range(1, 10) for c in Color ])
     
  

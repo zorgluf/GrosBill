@@ -20,21 +20,7 @@ class SchottenTottenEnv(GBEnv):
     gui_hand_card_selected: int = None
 
     def __init__(self, player_names: list[str] = None):
-        super(SchottenTottenEnv,self).__init__("Schotten Totten", 2, player_names)
-
-
-    def reset(self, seed=None):
-        super().reset(seed=seed)
-        #Set up board
-        self.board = Board()
-        #Set up players
-        self.board.add_player(Player(PlayerId.PLAYER1, self.player_names[0]))
-        self.board.add_player(Player(PlayerId.PLAYER2, self.player_names[1]))
-        self.current_player = 0
-        #add cards to players
-        for i in range(MAX_CARDS_PER_PLAYER):
-            self.board.players[PlayerId.PLAYER1.value].hand.add(self.board.main_deck.draw(1))
-            self.board.players[PlayerId.PLAYER2.value].hand.add(self.board.main_deck.draw(1))
+        super(SchottenTottenEnv,self).__init__("stotten", 2, player_names)
 
         #Set up observation space
         self.observation_space = gym.spaces.Dict({
@@ -48,6 +34,19 @@ class SchottenTottenEnv(GBEnv):
 
         #Set up the action space
         self.action_space = gym.spaces.MultiDiscrete([ MAX_CARDS_PER_PLAYER, NB_STONES ]) #First dimension is the position in hand of the card played, second dimension is the destination stone.
+
+    def reset(self, seed=None):
+        super().reset(seed=seed)
+        #Set up board
+        self.board = Board()
+        #Set up players
+        self.board.add_player(Player(PlayerId.PLAYER1, self.player_names[0]))
+        self.board.add_player(Player(PlayerId.PLAYER2, self.player_names[1]))
+        self.current_player = 0
+        #add cards to players
+        for i in range(MAX_CARDS_PER_PLAYER):
+            self.board.players[PlayerId.PLAYER1.value].hand.add(self.board.main_deck.draw(1))
+            self.board.players[PlayerId.PLAYER2.value].hand.add(self.board.main_deck.draw(1))
 
         return self.observation, self._get_info()
     
@@ -63,11 +62,11 @@ class SchottenTottenEnv(GBEnv):
         player1_hand = self.board.players[PlayerId.PLAYER1.value].hand.observation
         player2_hand = self.board.players[PlayerId.PLAYER2.value].hand.observation
         main_deck = self.board.main_deck.observation
-        stones = self.board.stones
+        stones = [ position.value for position in self.board.stones ]
         #build cards_played obs
         cards_by_stone = list()
         for i in range(NB_STONES):
-            cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value], self.board.played_cards[i][PlayerId.PLAYER2.value] ]))
+            cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value].observation, self.board.played_cards[i][PlayerId.PLAYER2.value].observation ]))
         cards_played = np.stack(cards_by_stone)
 
         return dict(
@@ -88,18 +87,16 @@ class SchottenTottenEnv(GBEnv):
         """
         Returns a list of legal actions for the current player.
         """
-        mask = np.zeros((6, 9), dtype=bool)
+        mask_card = np.zeros((MAX_CARDS_PER_PLAYER,), dtype=bool)
+        mask_stone = np.zeros((NB_STONES,), dtype=bool)
         player = self.board.players[self.current_player]
         for hand_idx in range(MAX_CARDS_PER_PLAYER):
-            if hand_idx >= len(player.hand):
-                mask[hand_idx, :] = False
-            else:
-                for stone_idx in range(NB_STONES):
-                    if len(self.board.played_cards[stone_idx][self.current_player]) < 3:
-                        mask[hand_idx, stone_idx] = True
-                    else:
-                        mask[hand_idx, stone_idx] = False
-        return mask
+            if hand_idx < len(player.hand):
+                mask_card[hand_idx] = True
+        for stone_idx in range(NB_STONES):
+            if len(self.board.played_cards[stone_idx][self.current_player]) < 3:
+                mask_stone[stone_idx] = True
+        return np.concatenate([mask_card, mask_stone])
     
     def score_stone(self, cards: Deck) -> int:
         """
@@ -137,6 +134,9 @@ class SchottenTottenEnv(GBEnv):
                 if score_stone_current > score_stone_opponent:
                     return True
                 else:
+                    if score_stone_current == score_stone_opponent:
+                        #special case : the first one to play the stone wins, so it is the opponent that can claim the stone
+                        self.board.stones[stone_idx] = StonePosition.PLAYER2 if self.current_player == PlayerId.PLAYER1.value else StonePosition.PLAYER1
                     return False
             else:
                 if len(self.board.played_cards[stone_idx][self.current_opponent]) == 2:
@@ -152,7 +152,7 @@ class SchottenTottenEnv(GBEnv):
                         dummy_stone_cards.add(self.board.played_cards[stone_idx][self.current_opponent])
                         dummy_stone_cards.add([card])
                         score_stone_opponent = self.score_stone(dummy_stone_cards)
-                        if score_stone_current < score_stone_opponent:
+                        if score_stone_current <= score_stone_opponent:
                             return False
                     return True
         return False
@@ -161,13 +161,13 @@ class SchottenTottenEnv(GBEnv):
         terminated = False
 
         # check move legality
-        if (action != -1) and (self.action_masks()[action[0], action[1]] == False):
+        if (type(action) != int) and (self.action_masks()[action[0]] == False or self.action_masks()[action[1] + MAX_CARDS_PER_PLAYER] == False):
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
         
         #initial score of the current player
-        init_score = self.compute_score()
+        init_score = self.compute_score(self.current_player)
         #Play card on stone
-        if action != -1:
+        if (type(action) != int):
             card = self.board.players[self.current_player].hand.draw_one_by_index(action[0])
             self.board.played_cards[action[1]][self.current_player].add([card])
         #Check if current player can claim a stone
@@ -182,9 +182,10 @@ class SchottenTottenEnv(GBEnv):
         if len(self.board.main_deck) > 0:
             card = self.board.main_deck.draw(1)
             self.board.players[self.current_player].hand.add(card)
-        #Compute reward
-        after_score = self.compute_score()
-        reward = after_score - init_score
+        #Compute reward for current player
+        after_score = self.compute_score(self.current_player)
+        reward = [0, 0]
+        reward[self.current_player] = after_score - init_score
         #check if we are done
         if after_score >= 10:
             terminated = True
@@ -194,18 +195,18 @@ class SchottenTottenEnv(GBEnv):
 
         return self.observation, reward, terminated, False, self._get_info()
     
-    def compute_score(self):
+    def compute_score(self, player: int) -> int:
         """
-        Compute the current virtual score for the current player
+        Compute the current virtual score for one player
         1 point for each stone claimed, 1 point for each continuous stone claimed
         10 point if winning the game (3 continuois stones claimed or 5 stones claimed)
         """
         score = 0
         for stone_idx in range(NB_STONES):
-            if self.board.stones[stone_idx].value == self.current_player * 2:
+            if self.board.stones[stone_idx].value == player * 2:
                 score += 1
                 #check if continuous stone
-                if stone_idx > 0 and self.board.stones[stone_idx - 1].value == self.current_player * 2:
+                if stone_idx > 0 and self.board.stones[stone_idx - 1].value == player * 2:
                     score += 1
         if score >= 5:
             score = 10

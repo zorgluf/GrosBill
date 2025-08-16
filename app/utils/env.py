@@ -47,31 +47,39 @@ class GBEnv(gym.Env):
         # Implement the reset logic for the environment in subclasses
         return None, {}
 
-    def step(self, action: int):
+    def step(self, action):
         """
-        Must be implemented in subclasses to apply the action and return the new state, reward, done, and info.
+        Applies the given action to the environment and returns the resulting state, reward, termination flags, and additional info.
+        Args:
+            action: The action to be applied to the environment.
+        Returns:
+            tuple: A tuple containing:
+                - next_state: The new state of the environment after the action.
+                - reward (List[float]): The rewards obtained from applying the action for each player.
+                - terminated (bool): Whether the episode has terminated.
+                - truncated (bool): Whether the episode was truncated.
+                - info (dict): Additional information, including whether the next step requires an action from a player.
         """
         # Apply the action and return the new state, reward, done, and info
         next_state = self.observation_space.sample()
-        reward = 1.0  # Example reward
+        reward = [1.0, ]  # Example reward
         terminated = False  # Example termination condition
         truncated = False
         info = {
             "next_step_no_action": False #must return this value. Indicate if the next step need an action from one of the players
         }
         raise NotImplementedError("Subclasses must implement action_masks method.")
-        return next_state, reward, terminated, truncated, info
 
-    def render(self, pov_player: int = -1, mode:str = 'human_web', **kwargs):
+    def render(self, pov_player: int = None, mode:str = 'human_web', **kwargs):
         """
         Update the render of the environment. Superseeded by subclasses to implement specific rendering logic.
         Args:
-            pov_player (int, optional): Player number for point of view rendering. -1 set the pov_player as the current player.
+            pov_player (int, optional): Player number for point of view rendering. -1 activate god mode (see everything). None set the pov_player to the current player
             mode (str, optional): Rendering mode. Defaults to 'human_web'.
             suggested_action (int, optional): Suggested action for human players. Defaults to None.
         """
-        if pov_player == -1:
-            pov_player = self.current_player
+        if pov_player == None:
+            self.pov_player = self.current_player
         else:
             self.pov_player = pov_player
         return
