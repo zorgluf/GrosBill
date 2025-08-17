@@ -19,7 +19,7 @@ class CustomPolicy(MaskableMultiInputActorCriticPolicy):
             observation_space,
             action_space,
             lr_schedule,
-            net_arch=[ 500, 300, 100 ],
+            net_arch=[ 1000, 500, 300, 100 ],
             *args,
             **kwargs,
         )

@@ -11,6 +11,7 @@ class GBEnv(gym.Env):
     n_players: int
     player_names: list[str] = None
     done: bool = False #True if the game is finished
+    winner_player: int = None #player that win the game if done
     name: str = '' #name of the game, as declared inside the environment directory
 
     def __init__(self, name: str, n_players: int = 2, player_names: list[str] = None):

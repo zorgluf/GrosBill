@@ -24,11 +24,9 @@ class SchottenTottenEnv(GBEnv):
 
         #Set up observation space
         self.observation_space = gym.spaces.Dict({
-            "player1_hand": gym.spaces.MultiBinary( [ 9, len(Color) ]), #multibinary of all possible cards combination
-            "player2_hand": gym.spaces.MultiBinary( [ 9, len(Color) ]),
-            "main_deck": gym.spaces.MultiBinary( [ 9, len(Color) ]),
-            "stones": gym.spaces.MultiDiscrete([3] * 9),  # 3 states for each stone position
-            "cards_played": gym.spaces.MultiBinary( [ 9, 2, 9, len(Color) ]), #multibinary of all possible cards combination for the two side of each stone
+            "current_player_hand": gym.spaces.MultiBinary( [ MAX_CARDS_PER_PLAYER, 9, len(Color) ]), #multibinary of all possible cards combination, per card
+            "stones": gym.spaces.MultiDiscrete([3] * NB_STONES),  # 3 states for each stone position
+            "cards_played": gym.spaces.MultiBinary( [ NB_STONES, 2, 9, len(Color) ]), #multibinary of all possible cards combination for the two side of each stone
             "current_player": gym.spaces.Discrete(2)  # 0 or 1 for player turn
         })
 
@@ -59,9 +57,10 @@ class SchottenTottenEnv(GBEnv):
 
     @property
     def observation(self):
-        player1_hand = self.board.players[PlayerId.PLAYER1.value].hand.observation
-        player2_hand = self.board.players[PlayerId.PLAYER2.value].hand.observation
-        main_deck = self.board.main_deck.observation
+        current_player_hand_list = [ Deck([card]).observation for card in self.board.players[self.current_player].hand ]
+        for i in range(len(current_player_hand_list),MAX_CARDS_PER_PLAYER):
+            current_player_hand_list.append(np.zeros([9,6]))
+        current_player_hand = np.stack(current_player_hand_list)
         stones = [ position.value for position in self.board.stones ]
         #build cards_played obs
         cards_by_stone = list()
@@ -70,9 +69,7 @@ class SchottenTottenEnv(GBEnv):
         cards_played = np.stack(cards_by_stone)
 
         return dict(
-            player1_hand = player1_hand,
-            player2_hand = player2_hand,
-            main_deck = main_deck,
+            current_player_hand = current_player_hand,
             stones = stones,
             cards_played = cards_played,
             current_player = self.current_player

@@ -8,7 +8,12 @@ from utils.env import GBEnv
 @ui.refreshable
 def _gui_generic_buttons(env: GBEnv, callback = None):
     ui.button("Next step", on_click=lambda: callback(None)).bind_visibility_from(env, "current_player", backward=lambda current_player: current_player == -1)
-    ui.button("Finish game.", on_click=lambda: ui.navigate.to("/")).bind_visibility_from(env, "done")
+    with ui.dialog() as dialog, ui.card():
+        ui.label().bind_visibility_from(env,"done").bind_text_from(env,"winner_player",lambda w: "Player {env.player_names.index(env.winner_player)} win !" if env.winner_player != None else "Winner undetermined.")
+        ui.button("Close game", on_click=lambda: ui.navigate.to("/")).bind_visibility_from(env, "done")
+    if env.done == True:
+        dialog.open()
+
 
 def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = None, choose_best_action = True):
 

@@ -20,7 +20,7 @@ def _get_card_element(card: Card):
         ui.label(f"{card.value}").style("width: 10%; position: absolute; top: 0px; right: 0px;").tailwind.text_color(card.color.name.lower())
 
 @ui.refreshable
-def _gui_board(env, callback):
+def _gui_board(env, callback, suggested_action = None):
     board = env.board
     with ui.grid(columns=NB_STONES).classes("gap-0"):
         # Opponent's cards on stone
@@ -38,6 +38,8 @@ def _gui_board(env, callback):
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if board.stones[i] == StonePosition.NEUTRAL:
                     ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
+                    if suggested_action != None and suggested_action[1] == i:
+                        _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
                 else:
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if (env.current_player == PlayerId.PLAYER1.value and board.stones[i] == StonePosition.PLAYER1) or (env.current_player == PlayerId.PLAYER2.value and board.stones[i] == StonePosition.PLAYER2):
@@ -60,17 +62,22 @@ def _gui_hand(env: SchottenTottenEnv, callback, suggested_action = None):
         for i, card in enumerate(env.board.players[env.current_player].hand):
             with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1})'):
                 _get_card_element(card)
+                if suggested_action != None and suggested_action[0] == i:
+                    _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
 
 def init_web(env: SchottenTottenEnv, callback = None):
     with ui.column():
         _gui_board(env, callback)
         _gui_hand(env, callback)
 
-
 def render_web(env: SchottenTottenEnv, callback, suggested_action = None, **kwargs):
-    _gui_board.refresh(env, callback)
+    _gui_board.refresh(env, callback, suggested_action)
     _gui_hand.refresh(env, callback, suggested_action)
     #TODO handle finish game (do a last update on ui and print the winner)
 
 
-    
+def _element_star():
+    content = '''<svg viewBox="0 0 300 275" xmlns="http://www.w3.org/2000/svg" version="1.1">
+  <polygon fill="#fdff00" stroke="#605a00" stroke-width="15" points="150,25  179,111 269,111 197,165                     223,251  150,200 77,251  103,165                     31,111 121,111"/>
+</svg>'''
+    return ui.html(content)
