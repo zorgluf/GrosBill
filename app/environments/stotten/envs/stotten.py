@@ -65,7 +65,8 @@ class SchottenTottenEnv(GBEnv):
         #build cards_played obs
         cards_by_stone = list()
         for i in range(NB_STONES):
-            cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value].observation, self.board.played_cards[i][PlayerId.PLAYER2.value].observation ]))
+            cards_by_stone.append(np.stack([ self.board.played_cards[i][self.current_player].observation, self.board.played_cards[i][self.current_opponent].observation ]))
+            #cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value].observation, self.board.played_cards[i][PlayerId.PLAYER2.value].observation ]))
         cards_played = np.stack(cards_by_stone)
 
         return dict(
