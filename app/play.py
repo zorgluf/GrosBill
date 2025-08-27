@@ -36,7 +36,7 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
                 action = human_action
                 human_action = None
         else:
-            action = current_player.choose_action(env, choose_best_action = choose_best_action, mask_invalid_actions = True)
+            action = current_player.choose_action(env, choose_best_action = choose_best_action)
 
     _, _, done, _ , info = env.step(action)
     if info['next_step_no_action']:
@@ -45,6 +45,7 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
       return
   
   env.render(pov_player = pov_player)
+  _gui_generic_buttons.refresh(env)
 
 def load_agents(env, agent_names, device):
 
@@ -97,14 +98,14 @@ def stotten_page():
     #TODO : refactor this to use the same code as frouge_page
     from environments.stotten.envs.stotten import SchottenTottenEnv
 
-    agents_names = ['human1', 'human2']
-    pov_player = agents_names.index('human1')
+    agents_names = ['human', 'computer']
+    pov_player = agents_names.index('human')
     env = SchottenTottenEnv(player_names=agents_names)
     # set seed
     seed = random.randint(0,1000)
     env.reset(seed = seed)
     # load agents
-    agents = load_agents(env, ['human', 'human'], "cpu")
+    agents = load_agents(env, ['human', 'best_model'], "cpu")
     # start gui
     env.nicegui_page()
     _gui_generic_buttons(env,)

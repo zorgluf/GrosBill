@@ -205,14 +205,25 @@ class SchottenTottenEnv(GBEnv):
         10 point if winning the game (3 continuois stones claimed or 5 stones claimed)
         """
         score = 0
+        #check if 5 stones owned
         for stone_idx in range(NB_STONES):
             if self.board.stones[stone_idx].value == player * 2:
                 score += 1
-                #check if continuous stone
-                if (stone_idx > 0) and (self.board.stones[stone_idx - 1].value == player * 2):
-                    score += 1
         if score >= 5:
             score = 10
+        #check if continuous stone
+        cont_score = 0
+        for stone_idx in range(NB_STONES):
+            if self.board.stones[stone_idx].value == player * 2:
+                if stone_idx > 0:
+                    if self.board.stones[stone_idx - 1].value == player * 2:
+                        cont_score += 1
+                        score += 1
+                        if cont_score >= 2:
+                            break
+                        continue
+            cont_score = 0
+
         return score
 
     def render(self, **kwargs):

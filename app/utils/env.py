@@ -73,7 +73,7 @@ class GBEnv(gym.Env):
 
     def render(self, pov_player: int = None, mode:str = 'human_web', **kwargs):
         """
-        Update the render of the environment. Superseeded by subclasses to implement specific rendering logic.
+        Update the render of the environment. Superseeded by subclasses to implement specific rendering logic. Must be called by subclass
         Args:
             pov_player (int, optional): Player number for point of view rendering. -1 activate god mode (see everything). None set the pov_player to the current player
             mode (str, optional): Rendering mode. Defaults to 'human_web'.

@@ -70,7 +70,7 @@ def init_web(env: SchottenTottenEnv, callback = None):
         _gui_board(env, callback)
         _gui_hand(env, callback)
 
-def render_web(env: SchottenTottenEnv, callback, suggested_action = None, **kwargs):
+def render_web(env: SchottenTottenEnv, callback = None, suggested_action = None, **kwargs):
     _gui_board.refresh(env, callback, suggested_action)
     _gui_hand.refresh(env, callback, suggested_action)
     #TODO handle finish game (do a last update on ui and print the winner)
