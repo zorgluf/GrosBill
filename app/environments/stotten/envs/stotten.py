@@ -14,6 +14,8 @@ from .render_web import render_web, init_web
 
 from utils.env import GBEnv
 
+WIN_SCORE = 10000
+
 class SchottenTottenEnv(GBEnv):
 
     #the card selected through UI to play
@@ -186,10 +188,10 @@ class SchottenTottenEnv(GBEnv):
         after_score = self.compute_score(self.current_player)
         reward = [0., 0.]
         #scale reward into [0;1]
-        reward[self.current_player] = (after_score - init_score) / 10
+        reward[self.current_player] = (after_score - init_score) / WIN_SCORE
         #check if we are done
         after_score_opponent = self.compute_score(self.current_opponent)
-        if (after_score >= 10) or (after_score_opponent >= 10):
+        if (after_score >= WIN_SCORE) or (after_score_opponent >= WIN_SCORE):
             terminated = True
             self.done = True
         else:
@@ -205,12 +207,14 @@ class SchottenTottenEnv(GBEnv):
         10 point if winning the game (3 continuois stones claimed or 5 stones claimed)
         """
         score = 0
+        stones = 0
         #check if 5 stones owned
         for stone_idx in range(NB_STONES):
             if self.board.stones[stone_idx].value == player * 2:
-                score += 1
-        if score >= 5:
-            score = 10
+                stones += 1
+                score += self.score_stone(self.board.played_cards[stone_idx][player])
+        if stones >= 5:
+            return WIN_SCORE
         #check if continuous stone
         cont_score = 0
         for stone_idx in range(NB_STONES):
@@ -218,13 +222,13 @@ class SchottenTottenEnv(GBEnv):
                 if stone_idx > 0:
                     if self.board.stones[stone_idx - 1].value == player * 2:
                         cont_score += 1
-                        score += 1
+                        score += 1000
                         if cont_score >= 2:
-                            break
+                            return WIN_SCORE
                         continue
             cont_score = 0
 
-        return score
+        return score + stones * 1000
 
     def render(self, **kwargs):
         super().render(**kwargs)
