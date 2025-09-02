@@ -2,6 +2,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from gymnasium import spaces
 import torch as th
+from torch import Tensor
 from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
@@ -29,7 +30,7 @@ class HandModule(th.nn.Module):
 
 class CardsPlayedModule(th.nn.Module):
 
-    OUTPUT_DIM_BY_STONE = 16
+    #OUTPUT_DIM_BY_STONE = 16
 
     def __init__(self, dim_stones, dim_players, flatdim_cards):
         super().__init__()
@@ -43,7 +44,7 @@ class CardsPlayedModule(th.nn.Module):
                 )
         #Common merge on one stone
         self.cards_merge_fe = th.nn.Sequential(
-            th.nn.Linear(dim_players * self.flatdim_cards, self.OUTPUT_DIM_BY_STONE),
+            th.nn.Linear(dim_players * self.flatdim_cards, dim_players * self.flatdim_cards),
             th.nn.ReLU()
         )
         
@@ -59,7 +60,7 @@ class CardsPlayedModule(th.nn.Module):
     
     @property
     def output_flatdim(self):
-        return self.dim_stones * self.OUTPUT_DIM_BY_STONE
+        return self.dim_stones * self.flatdim_cards * self.dim_players
 
 class CustomFeatureExtractor(BaseFeaturesExtractor):
 
@@ -90,11 +91,74 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
         self.extractors = th.nn.ModuleDict(extractors)
         self._features_dim = total_concat_size
 
+        #batch norm layer
+        self.batch_norm = th.nn.BatchNorm1d(total_concat_size)
+
     def forward(self, obs) -> th.Tensor:
         encoded_tensor_list = []
         for key, extractor in self.extractors.items():
             encoded_tensor_list.append(extractor(obs[key]))
-        return th.cat(encoded_tensor_list, dim=1)
+        return self.batch_norm(th.cat(encoded_tensor_list, dim=1))
+    
+class CustomNetwork(th.nn.Module):
+    """
+    Custom network for policy and value function.
+    It receives as input the features extracted by the features extractor.
+
+    :param feature_dim: dimension of the features extracted with the features_extractor (e.g. features from a CNN)
+    :param last_layer_dim_pi: (int) number of units for the last layer of the policy network
+    :param last_layer_dim_vf: (int) number of units for the last layer of the value network
+    """
+
+    def __init__(
+        self,
+        input_feature_dim: int,
+        last_layer_dim_pi: int = 64,
+        last_layer_dim_vf: int = 1,
+    ):
+        super().__init__()
+
+        self.latent_dim_pi = last_layer_dim_pi
+        self.latent_dim_vf = last_layer_dim_vf
+
+        self.l1 = th.nn.Sequential(
+            th.nn.Linear(input_feature_dim, input_feature_dim),
+            th.nn.Dropout(p=0.5),
+            th.nn.ReLU(),
+            th.nn.BatchNorm1d(input_feature_dim),
+            th.nn.Linear(input_feature_dim, input_feature_dim),
+            th.nn.Dropout(p=0.5),
+            th.nn.ReLU(),
+            th.nn.BatchNorm1d(input_feature_dim),
+        )
+
+        self.policy_head = th.nn.Sequential(
+            th.nn.Linear(input_feature_dim, self.latent_dim_pi),
+            th.nn.ReLU(),
+        )
+        self.value_head =  th.nn.Sequential(
+            th.nn.Linear(input_feature_dim, self.latent_dim_vf),
+            th.nn.Tanh(),
+        )
+
+    def forward(self, features: Tensor) -> Tuple[Tensor, Tensor]:
+        return self.forward_actor(features), self.forward_critic(features)
+    
+    def _common_forward(self, features: Tensor) -> Tensor:
+
+        return th.add(self.l1(features),features)
+
+    def forward_actor(self, features: Tensor) -> Tensor:
+        # Policy network
+        extracted_features = self._common_forward(features)
+        policy_net = self.policy_head(extracted_features)
+        return policy_net
+
+    def forward_critic(self, features: Tensor) -> Tensor:
+        # Value network
+        extracted_features = self._common_forward(features)
+        value_net = self.value_head(extracted_features)
+        return value_net
 
 
 class CustomPolicy(MaskableMultiInputActorCriticPolicy):
@@ -112,10 +176,13 @@ class CustomPolicy(MaskableMultiInputActorCriticPolicy):
             observation_space,
             action_space,
             lr_schedule,
-            net_arch=dict(pi=[ 500, 64 ], vf=[ 500, 32]),
             features_extractor_class=CustomFeatureExtractor,
             *args,
             **kwargs,
         )
+    
+    def _build_mlp_extractor(self) -> None:
+        features_dim = self.features_extractor._features_dim
+        self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space))
 
 
