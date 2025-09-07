@@ -9,13 +9,13 @@ from utils.env import GBEnv
 def _gui_generic_buttons(env: GBEnv, callback = None):
     ui.button("Next step", on_click=lambda: callback(None)).bind_visibility_from(env, "current_player", backward=lambda current_player: current_player == -1)
     with ui.dialog() as dialog, ui.card():
-        ui.label().bind_visibility_from(env,"done").bind_text_from(env,"winner_player",lambda w: "Player {env.player_names.index(env.winner_player)} win !" if env.winner_player != None else "Winner undetermined.")
+        ui.label().bind_visibility_from(env,"done").bind_text_from(env,"winner_player",lambda w: f"Player {env.player_names[env.winner_player]} win !" if env.winner_player != None else "Winner undetermined.")
         ui.button("Close game", on_click=lambda: ui.navigate.to("/")).bind_visibility_from(env, "done")
     if env.done == True:
         dialog.open()
 
 
-def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = None, choose_best_action = True):
+def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = None, choose_best_action = True, suggest = False):
 
   done = False
   while not done:
@@ -26,11 +26,11 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
         if current_player.name == 'human':
             if human_action == None:
                 env.render(
-                    callback=lambda a: play_step(env, agents, pov_player, a),
+                    callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest),
                     pov_player = pov_player,
-                    suggested_action = agents[-1].choose_action(env, choose_best_action=True, mask_invalid_actions=True) if options.suggest else None
+                    suggested_action = agents[-1].choose_action(env, choose_best_action=True) if suggest else None
                 )
-                _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a))
+                _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest))
                 return
             else:
                 action = human_action
@@ -40,7 +40,7 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
 
     _, _, done, _ , info = env.step(action)
     if info['next_step_no_action']:
-      env.render(callback=lambda a: play_step(env, agents, pov_player, a), pov_player = pov_player)
+      env.render(callback=lambda a: play_step(env, agents, pov_player, a), pov_player = pov_player, suggest=suggest)
       _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a))
       return
   
@@ -91,7 +91,7 @@ def frouge_page():
     env.nicegui_page()
     _gui_generic_buttons(env,)
     # play game
-    play_step(env, agents, pov_player=pov_player)
+    play_step(env, agents, pov_player=pov_player, suggest=options.suggest)
 
 @ui.page('/stotten')
 def stotten_page():
@@ -110,7 +110,7 @@ def stotten_page():
     env.nicegui_page()
     _gui_generic_buttons(env,)
     # play game
-    play_step(env, agents, pov_player=pov_player)
+    play_step(env, agents, pov_player=pov_player, suggest=options.suggest)
 
 if __name__ in {"__main__", "__mp_main__"}:
     options = PlayOptions()

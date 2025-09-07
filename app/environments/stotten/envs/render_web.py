@@ -14,8 +14,10 @@ def _action_play_card(stone_idx:int, play_callback, env: SchottenTottenEnv):
         play_callback([ env.gui_hand_card_selected, stone_idx])
 
 @ui.refreshable
-def _get_card_element(card: Card):
+def _get_card_element(card: Card, add_star = False):
     with ui.card().tight().style("width:10vw; aspect-ratio: 1 / 1;"):
+        if add_star:
+            _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
         ui.label(f"{card.value}").style("font-size: 10vw; width:100%; text-align: center; line-height: normal").tailwind.text_color(card.color.name.lower())
         ui.label(f"{card.value}").style("width: 10%; position: absolute; top: 0px; right: 0px;").tailwind.text_color(card.color.name.lower())
 
@@ -37,9 +39,10 @@ def _gui_board(env, callback, suggested_action = None):
                 else:
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if board.stones[i] == StonePosition.NEUTRAL:
-                    ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
-                    if suggested_action != None and suggested_action[1] == i:
-                        _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
+                    with ui.element("div").style("width: 10vw; height:5vh; position: relative") as stone_element:
+                        stone_element.tailwind.background_color("grey")
+                        if type(suggested_action) != None.__class__ and suggested_action[1] == i:
+                            _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
                 else:
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if (env.current_player == PlayerId.PLAYER1.value and board.stones[i] == StonePosition.PLAYER1) or (env.current_player == PlayerId.PLAYER2.value and board.stones[i] == StonePosition.PLAYER2):
@@ -61,9 +64,8 @@ def _gui_hand(env: SchottenTottenEnv, callback, suggested_action = None):
         card_toggle = ui.toggle(dict(enumerate([''] * len(cards)))).bind_value_to(env,"gui_hand_card_selected")
         for i, card in enumerate(env.board.players[env.current_player].hand):
             with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1})'):
-                _get_card_element(card)
-                if suggested_action != None and suggested_action[0] == i:
-                    _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
+                add_star = type(suggested_action) != None.__class__ and suggested_action[0] == i
+                _get_card_element(card, add_star=add_star)
 
 def init_web(env: SchottenTottenEnv, callback = None):
     with ui.column():

@@ -43,6 +43,7 @@ class SchottenTottenEnv(GBEnv):
         self.board.add_player(Player(PlayerId.PLAYER1, self.player_names[0]))
         self.board.add_player(Player(PlayerId.PLAYER2, self.player_names[1]))
         self.current_player = 0
+        self.winner_player = None
         #add cards to players
         for i in range(MAX_CARDS_PER_PLAYER):
             self.board.players[PlayerId.PLAYER1.value].hand.add(self.board.main_deck.draw(1))
@@ -192,6 +193,7 @@ class SchottenTottenEnv(GBEnv):
         #check if we are done
         after_score_opponent = self.compute_score(self.current_opponent)
         if (after_score >= WIN_SCORE) or (after_score_opponent >= WIN_SCORE):
+            self.winner_player = self.current_player if after_score >= after_score_opponent else self.current_opponent
             terminated = True
             self.done = True
         else:
