@@ -3,6 +3,7 @@ import numpy as np
 from shutil import copyfile
 
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
+from stable_baselines3.common.logger import HParam
 
 from utils.files import get_best_model_name, get_model_stats
 
@@ -49,3 +50,23 @@ class SelfPlayCallback(MaskableEvalCallback):
       self.best_mean_reward = -np.inf
 
     return True
+  
+  def _on_training_start(self) -> None:
+    hparam_dict = {
+        "gamma": self.model.gamma,
+        "ent_coeff": self.model.ent_coeff,
+        "n_epochs": self.model.n_epochs,
+        "clip_range": self.model.clip_range(0),
+        "batch_size": self.model.batch_size,
+    }
+    # define the metrics that will appear in the `HPARAMS` Tensorboard tab by referencing their tag
+    # Tensorbaord will find & display metrics from the `SCALARS` tab
+    metric_dict = {
+        "rollout/ep_rew_mean": 0.0,
+        "eval/mean_reward": 0.0,
+    }
+    self.logger.record(
+        "hparams",
+        HParam(hparam_dict, metric_dict),
+        exclude=("stdout", "log", "json", "csv"),
+    )

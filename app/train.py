@@ -2,7 +2,6 @@ import os
 
 import argparse
 import time
-from shutil import copyfile
 import logging
 import random
 
@@ -10,8 +9,6 @@ from sb3_contrib import MaskablePPO as PPO1
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.logger import HParam
 
 from utils.callbacks import SelfPlayCallback
 from utils.files import reset_logs, reset_models, load_model
@@ -19,34 +16,6 @@ from utils.register import get_environment
 from utils.selfplay import selfplay_wrapper
 
 import config
-
-class HParamCallback(BaseCallback):
-    """
-    Saves the hyperparameters and metrics at the start of the training, and logs them to TensorBoard.
-    """
-
-    def _on_training_start(self) -> None:
-        hparam_dict = {
-            "gamma": self.model.gamma,
-            "ent_coeff": self.model.ent_coeff,
-            "n_epochs": self.model.n_epochs,
-            "clip_range": self.model.clip_range(0),
-            "batch_size": self.model.batch_size,
-        }
-        # define the metrics that will appear in the `HPARAMS` Tensorboard tab by referencing their tag
-        # Tensorbaord will find & display metrics from the `SCALARS` tab
-        metric_dict = {
-            "rollout/ep_rew_mean": 0.0,
-            "eval/mean_reward": 0.0,
-        }
-        self.logger.record(
-            "hparams",
-            HParam(hparam_dict, metric_dict),
-            exclude=("stdout", "log", "json", "csv"),
-        )
-
-    def _on_step(self) -> bool:
-        return True
 
 def main(args):
 
@@ -78,7 +47,7 @@ def main(args):
         seed = args.seed
     set_random_seed(seed)
 
-    logger.info('\nSetting up the selfplay training environment opponents...')
+    logger.info('Setting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
     if args.reset:
         #build base model
@@ -103,14 +72,14 @@ def main(args):
     time.sleep(5) # allow time for the base model to be saved out when the environment is created
 
     if args.reset or not os.path.exists(os.path.join(model_dir, 'best_model.zip')):
-        logger.info('\nLoading the base PPO agent to train...')
+        logger.info('Loading the base PPO agent to train...')
         model = PPO1.load(os.path.join(model_dir, 'base.zip'), env, **params)
     else:
-        logger.info('\nLoading the best_model.zip PPO agent to continue training...')
+        logger.info('Loading the best_model.zip PPO agent to continue training...')
         model = PPO1.load(os.path.join(model_dir, 'best_model.zip'), env, **params)
 
     #Callbacks
-    logger.info('\nSetting up the selfplay evaluation environment opponents...')
+    logger.info('Setting up the selfplay evaluation environment opponents...')
     callback_args = {
         'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device),
         'best_model_save_path' : config.TMPMODELDIR,
@@ -125,9 +94,9 @@ def main(args):
     # Evaluate the agent against previous versions
     eval_callback = SelfPlayCallback(args.opponent_type, args.threshold, args.env_name, logger, **callback_args)
 
-    logger.info('\nSetup complete - commencing learning...\n')
+    logger.info('Setup complete - commencing learning...\n')
 
-    model.learn(total_timesteps=args.total_timesteps, callback=[eval_callback, HParamCallback()], reset_num_timesteps = False, tb_log_name=log_name, progress_bar=False)
+    model.learn(total_timesteps=args.total_timesteps, callback=[eval_callback], reset_num_timesteps = False, tb_log_name=log_name, progress_bar=False)
 
     env.close()
     del env
