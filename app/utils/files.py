@@ -127,15 +127,12 @@ def reset_logs():
     try:
         filelist = [ f for f in os.listdir(config.LOGDIR) if f not in ['.gitignore']]
         for f in filelist:
-            if os.path.isfile(f):  
+            if os.path.isfile(os.path.join(config.LOGDIR, f)):  
                 os.remove(os.path.join(config.LOGDIR, f))
-
-        for i in range(100):
-            if os.path.exists(os.path.join(config.LOGDIR, f'tb_{i}')):
-                rmtree(os.path.join(config.LOGDIR, f'tb_{i}'))
+            if os.path.isdir(os.path.join(config.LOGDIR, f)):
+                rmtree(os.path.join(config.LOGDIR, f))
         
         open(os.path.join(config.LOGDIR, 'log.txt'), 'a').close()
-    
         
     except Exception as e :
         print(e)

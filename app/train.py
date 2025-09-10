@@ -2,12 +2,10 @@ import os
 
 import argparse
 import time
-from shutil import copyfile
 import logging
 import random
 
 from sb3_contrib import MaskablePPO as PPO1
-from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.utils import set_random_seed
@@ -27,7 +25,8 @@ def main(args):
         os.makedirs(model_dir)
     except:
         pass
-    reset_logs()
+    if not args.keep_logs:
+        reset_logs()
     if args.reset:
         reset_models(model_dir)
 
@@ -37,13 +36,18 @@ def main(args):
     else:
         logger.setLevel(config.INFO)
 
+    if args.log_name == None:
+        log_name = args.env_name
+    else:
+        log_name = args.log_name
+
     if args.seed == 0:
         seed = random.randint(0,1000)
     else:
         seed = args.seed
     set_random_seed(seed)
 
-    logger.info('\nSetting up the selfplay training environment opponents...')
+    logger.info('Setting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
     if args.reset:
         #build base model
@@ -68,14 +72,14 @@ def main(args):
     time.sleep(5) # allow time for the base model to be saved out when the environment is created
 
     if args.reset or not os.path.exists(os.path.join(model_dir, 'best_model.zip')):
-        logger.info('\nLoading the base PPO agent to train...')
+        logger.info('Loading the base PPO agent to train...')
         model = PPO1.load(os.path.join(model_dir, 'base.zip'), env, **params)
     else:
-        logger.info('\nLoading the best_model.zip PPO agent to continue training...')
+        logger.info('Loading the best_model.zip PPO agent to continue training...')
         model = PPO1.load(os.path.join(model_dir, 'best_model.zip'), env, **params)
 
     #Callbacks
-    logger.info('\nSetting up the selfplay evaluation environment opponents...')
+    logger.info('Setting up the selfplay evaluation environment opponents...')
     callback_args = {
         'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device),
         'best_model_save_path' : config.TMPMODELDIR,
@@ -90,9 +94,9 @@ def main(args):
     # Evaluate the agent against previous versions
     eval_callback = SelfPlayCallback(args.opponent_type, args.threshold, args.env_name, logger, **callback_args)
 
-    logger.info('\nSetup complete - commencing learning...\n')
+    logger.info('Setup complete - commencing learning...\n')
 
-    model.learn(total_timesteps=int(1e9), callback=[eval_callback], reset_num_timesteps = False, tb_log_name="tb", progress_bar=True)
+    model.learn(total_timesteps=args.total_timesteps, callback=[eval_callback], reset_num_timesteps = False, tb_log_name=log_name, progress_bar=False)
 
     env.close()
     del env
@@ -110,25 +114,28 @@ def cli() -> None:
 
   parser.add_argument("--reset", "-r", action = 'store_true', default = False
                 , help="Start retraining the model from scratch")
+  parser.add_argument("--keep_logs", "-kl", action = 'store_true', default = False
+                , help="Keep all previous logs")
   parser.add_argument("--opponent_type", "-o", type = str, default = 'mostly_best'
               , help="best / mostly_best / random / base - the type of opponent to train against")
   parser.add_argument("--debug", "-d", action = 'store_true', default = False
               , help="Debug logging")
   parser.add_argument("--verbose", "-v", action = 'store_true', default = False
               , help="Show observation in debug output")
-  parser.add_argument("--best", "-b", action = 'store_true', default = False
-              , help="Uses best moves when evaluating agent against rules-based agent")
   parser.add_argument("--env_name", "-e", type = str, default = 'tictactoe'
-              , help="Which gym environment to train in: tictactoe, connect4, sushigo, butterfly, geschenkt, frouge")
+              , help="Which gym environment to train in: frouge, stotten")
+  parser.add_argument("--log_name", "-log", type = str, default = None
+              , help="Name of the experiment in tensorboard")
   parser.add_argument("--seed", "-s",  type = int, default = 0
             , help="Random seed. If 0, random")
   
-
+  parser.add_argument("--total_timesteps", "-ts",  type = int, default = 1e9
+            , help="Total timesteps for the whole training. Keep this almost infinite value and stop manually the training.")
   parser.add_argument("--eval_freq", "-ef",  type = int, default = 10240
             , help="How many timesteps should each actor contribute before the agent is evaluated. Default value is fine for most games.")
   parser.add_argument("--n_eval_episodes", "-ne",  type = int, default = 100
             , help="How many episodes should each actor contirbute to the evaluation of the agent. Default value is fine for most games.")
-  parser.add_argument("--threshold", "-t",  type = float, default = 0.2
+  parser.add_argument("--threshold", "-t",  type = float, default = 0.5
             , help="What score/reward must the agent achieve during evaluation to 'beat' the previous version and generate a new best model. Choose carefully, depending on the scoring scale of the game.")
   parser.add_argument("--gamma", "-g",  type = float, default = 0.99
             , help="The value of gamma in PPO (0.99: long term reward, 0.95: short term reward)")
@@ -137,7 +144,7 @@ def cli() -> None:
   parser.add_argument("--entcoeff", "-ent",  type = float, default = 0.05
             , help="The entropy coefficient in PPO (0.0: No exploration pressure → fast convergence, but risk of local optima, 0.01: Slight exploration encouragement, 0.05–0.1: Balanced exploration, >0.2: Strong exploration → can hurt performance if too random.)")
 
-  parser.add_argument("--n_epochs", "-oe",  type = int, default = 10
+  parser.add_argument("--n_epochs", "-oe",  type = int, default = 5
             , help="The number of epoch to train the PPO agent per batch. Default value is fine for most games.")
   parser.add_argument("--n_envs", "-n_envs",  type = int, default = 1
             , help="The number of envs to run in parallel.")

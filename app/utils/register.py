@@ -1,4 +1,4 @@
-
+import os
 
 def get_environment(env_name):
     try:
@@ -27,4 +27,10 @@ def get_network_arch(env_name):
         return CustomPolicy
     else:
         raise Exception(f'No model architectures found for {env_name}')
+    
+def get_trajectory_path(env_name: str):
+    dir = f"zoo/trajectories/{env_name}"
+    if os.path.exists(dir) == False:
+        os.makedirs(dir)
+    return os.path.join(dir,"expert_traj.npz")
 

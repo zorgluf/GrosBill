@@ -11,6 +11,7 @@ class GBEnv(gym.Env):
     n_players: int
     player_names: list[str] = None
     done: bool = False #True if the game is finished
+    winner_player: int = None #player that win the game if done
     name: str = '' #name of the game, as declared inside the environment directory
 
     def __init__(self, name: str, n_players: int = 2, player_names: list[str] = None):
@@ -72,7 +73,7 @@ class GBEnv(gym.Env):
 
     def render(self, pov_player: int = None, mode:str = 'human_web', **kwargs):
         """
-        Update the render of the environment. Superseeded by subclasses to implement specific rendering logic.
+        Update the render of the environment. Superseeded by subclasses to implement specific rendering logic. Must be called by subclass
         Args:
             pov_player (int, optional): Player number for point of view rendering. -1 activate god mode (see everything). None set the pov_player to the current player
             mode (str, optional): Rendering mode. Defaults to 'human_web'.

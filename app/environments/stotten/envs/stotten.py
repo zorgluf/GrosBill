@@ -14,6 +14,8 @@ from .render_web import render_web, init_web
 
 from utils.env import GBEnv
 
+WIN_SCORE = 10000
+
 class SchottenTottenEnv(GBEnv):
 
     #the card selected through UI to play
@@ -24,11 +26,9 @@ class SchottenTottenEnv(GBEnv):
 
         #Set up observation space
         self.observation_space = gym.spaces.Dict({
-            "player1_hand": gym.spaces.MultiBinary( [ 9, len(Color) ]), #multibinary of all possible cards combination
-            "player2_hand": gym.spaces.MultiBinary( [ 9, len(Color) ]),
-            "main_deck": gym.spaces.MultiBinary( [ 9, len(Color) ]),
-            "stones": gym.spaces.MultiDiscrete([3] * 9),  # 3 states for each stone position
-            "cards_played": gym.spaces.MultiBinary( [ 9, 2, 9, len(Color) ]), #multibinary of all possible cards combination for the two side of each stone
+            "current_player_hand": gym.spaces.MultiBinary( [ MAX_CARDS_PER_PLAYER, 9, len(Color) ]), #multibinary of all possible cards combination, per card
+            "stones": gym.spaces.MultiDiscrete([3] * NB_STONES),  # 3 states for each stone position
+            "cards_played": gym.spaces.MultiBinary( [ NB_STONES, 2, 9, len(Color) ]), #multibinary of all possible cards combination for the two side of each stone
             "current_player": gym.spaces.Discrete(2)  # 0 or 1 for player turn
         })
 
@@ -43,6 +43,7 @@ class SchottenTottenEnv(GBEnv):
         self.board.add_player(Player(PlayerId.PLAYER1, self.player_names[0]))
         self.board.add_player(Player(PlayerId.PLAYER2, self.player_names[1]))
         self.current_player = 0
+        self.winner_player = None
         #add cards to players
         for i in range(MAX_CARDS_PER_PLAYER):
             self.board.players[PlayerId.PLAYER1.value].hand.add(self.board.main_deck.draw(1))
@@ -59,20 +60,20 @@ class SchottenTottenEnv(GBEnv):
 
     @property
     def observation(self):
-        player1_hand = self.board.players[PlayerId.PLAYER1.value].hand.observation
-        player2_hand = self.board.players[PlayerId.PLAYER2.value].hand.observation
-        main_deck = self.board.main_deck.observation
+        current_player_hand_list = [ Deck([card]).observation for card in self.board.players[self.current_player].hand ]
+        for i in range(len(current_player_hand_list),MAX_CARDS_PER_PLAYER):
+            current_player_hand_list.append(np.zeros([9,6]))
+        current_player_hand = np.stack(current_player_hand_list)
         stones = [ position.value for position in self.board.stones ]
         #build cards_played obs
         cards_by_stone = list()
         for i in range(NB_STONES):
-            cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value].observation, self.board.played_cards[i][PlayerId.PLAYER2.value].observation ]))
+            cards_by_stone.append(np.stack([ self.board.played_cards[i][self.current_player].observation, self.board.played_cards[i][self.current_opponent].observation ]))
+            #cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value].observation, self.board.played_cards[i][PlayerId.PLAYER2.value].observation ]))
         cards_played = np.stack(cards_by_stone)
 
         return dict(
-            player1_hand = player1_hand,
-            player2_hand = player2_hand,
-            main_deck = main_deck,
+            current_player_hand = current_player_hand,
             stones = stones,
             cards_played = cards_played,
             current_player = self.current_player
@@ -162,6 +163,8 @@ class SchottenTottenEnv(GBEnv):
 
         # check move legality
         if (type(action) != int) and (self.action_masks()[action[0]] == False or self.action_masks()[action[1] + MAX_CARDS_PER_PLAYER] == False):
+            logger.error(self.observation)
+            logger.error(self.compute_score(self.current_player))
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
         
         #initial score of the current player
@@ -185,13 +188,17 @@ class SchottenTottenEnv(GBEnv):
         #Compute reward for current player
         after_score = self.compute_score(self.current_player)
         reward = [0., 0.]
-        reward[self.current_player] = after_score - init_score
+        #scale reward into [0;1]
+        reward[self.current_player] = (after_score - init_score) / WIN_SCORE
         #check if we are done
-        if after_score >= 1:
+        after_score_opponent = self.compute_score(self.current_opponent)
+        if (after_score >= WIN_SCORE) or (after_score_opponent >= WIN_SCORE):
+            self.winner_player = self.current_player if after_score >= after_score_opponent else self.current_opponent
             terminated = True
             self.done = True
-        #change player
-        self.current_player = abs(self.current_player - 1)
+        else:
+            #change player
+            self.current_player = abs(self.current_player - 1)
 
         return self.observation, reward, terminated, False, self._get_info()
     
@@ -202,15 +209,28 @@ class SchottenTottenEnv(GBEnv):
         10 point if winning the game (3 continuois stones claimed or 5 stones claimed)
         """
         score = 0
+        stones = 0
+        #check if 5 stones owned
         for stone_idx in range(NB_STONES):
             if self.board.stones[stone_idx].value == player * 2:
-                score += 1
-                #check if continuous stone
-                if stone_idx > 0 and self.board.stones[stone_idx - 1].value == player * 2:
-                    score += 1
-        if score >= 5:
-            score = 10
-        return score / 10
+                stones += 1
+                score += self.score_stone(self.board.played_cards[stone_idx][player])
+        if stones >= 5:
+            return WIN_SCORE
+        #check if continuous stone
+        cont_score = 0
+        for stone_idx in range(NB_STONES):
+            if self.board.stones[stone_idx].value == player * 2:
+                if stone_idx > 0:
+                    if self.board.stones[stone_idx - 1].value == player * 2:
+                        cont_score += 1
+                        score += 1000
+                        if cont_score >= 2:
+                            return WIN_SCORE
+                        continue
+            cont_score = 0
+
+        return score + stones * 1000
 
     def render(self, **kwargs):
         super().render(**kwargs)
