@@ -39,7 +39,7 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
                         pov_player = pov_player,
                         suggested_action = agents[-1].choose_action(env, choose_best_action=True) if suggest else None
                     )
-                    _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest))
+                    _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest, moves=moves))
                     return
                 else:
                     action = human_action
@@ -48,13 +48,13 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
                 action = current_player.choose_action(env, choose_best_action = choose_best_action)
 
         obs, _, done, _ , info = env.step(action)
-        if current_player.name == 'human':
+        if action != -1 and current_player.name == 'human':
             #record for trajectory
             moves[0].append(obs)
             moves[1].append(action)
         if info['next_step_no_action']:
-            env.render(callback=lambda a: play_step(env, agents, pov_player, a, moves=moves), pov_player = pov_player, suggest=suggest)
-            _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a))
+            env.render(callback=lambda a: play_step(env, agents, pov_player, a, moves=moves), pov_player = pov_player, suggest=suggest, moves=moves)
+            _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, moves=moves))
             return
   
     env.render(pov_player = pov_player)

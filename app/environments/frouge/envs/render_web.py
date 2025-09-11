@@ -56,45 +56,74 @@ def _on_click_cell_listener(c, r, env, callback):
 def _gui_board(env, callback):
     board = env.board
     if board != None:
-        with ui.row().classes("gap-0"):
-            for i in range(len(board.array)):
-                with ui.column().classes("gap-0"):
-                    for r in range(3):
-                        cell = board.get_cell(i,r)
-                        if cell == CV:
-                            bg_c = "transparent"
-                        if cell == CC: # climb
-                            bg_c = "red" # light red
-                        if cell == CD: # descent
-                            bg_c = "blue" # blue
-                        if cell == CP: # paved
-                            bg_c = "yellow" # yellow
-                        if cell == CSU: # supply cell
-                            bg_c = "cyan" # cyan
-                        if cell == CS: # start
-                            bg_c = "grey-6" # gray
-                        if cell == CF: # finish
-                            bg_c = "grey-6" # gray
-                        if cell == CN: #normal
-                            bg_c = "grey-4" # light grey
-                        rider = _get_rider(board,i,r)
-                        style_border = "border-top: 3px solid white; padding-top: 3px;" if r == 0 else "border-top: 2px dashed white; padding-top: 2px;"
-                        if cell != CV:
-                            style_border += " border-left: 1px solid black; padding-left: 1px"
-                        if cell != CV and (r == 2 or board.get_cell(i,r+1) == CV):
-                            style_border += " border-bottom: 3px solid white; padding-bottom: 3px;"
-                        if env.phase == 0 and cell == CS and rider == "-":
-                            ui.button("-", on_click=lambda x=(i,r): _on_click_cell_listener(x[0],x[1],env,callback)).style("width: 3em; height: 3em;").classes("gap-0 m-0 p-0")
-                        else:
-                            if rider.endswith("r"):
-                                _element_rouleur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
-                            elif rider.endswith("s"):
-                                _element_sprinteur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+        with ui.scroll_area().style("height: 12em") as scroll:
+            with ui.row(wrap=False).classes("gap-0"):
+                for i in range(len(board.array)):
+                    with ui.column().classes("gap-0"):
+                        for r in range(3):
+                            cell = board.get_cell(i,r)
+                            if cell == CV:
+                                bg_c = "transparent"
+                            if cell == CC: # climb
+                                bg_c = "red" # light red
+                            if cell == CD: # descent
+                                bg_c = "blue" # blue
+                            if cell == CP: # paved
+                                bg_c = "yellow" # yellow
+                            if cell == CSU: # supply cell
+                                bg_c = "cyan" # cyan
+                            if cell == CS: # start
+                                bg_c = "grey-6" # gray
+                            if cell == CF: # finish
+                                bg_c = "grey-6" # gray
+                            if cell == CN: #normal
+                                bg_c = "grey-4" # light grey
+                            rider = _get_rider(board,i,r)
+                            style_border = "border-top: 3px solid white; padding-top: 3px;" if r == 0 else "border-top: 2px dashed white; padding-top: 2px;"
+                            if cell != CV:
+                                style_border += " border-left: 1px solid black; padding-left: 1px"
+                            if cell != CV and (r == 2 or board.get_cell(i,r+1) == CV):
+                                style_border += " border-bottom: 3px solid white; padding-bottom: 3px;"
+                            if env.phase == 0 and cell == CS and rider == "-":
+                                ui.button("-", on_click=lambda x=(i,r): _on_click_cell_listener(x[0],x[1],env,callback)).style("width: 3em; height: 3em;").classes("gap-0 m-0 p-0")
                             else:
-                                ui.html("<div>&nbsp;</div>").style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
-                    ui.html("<div>&nbsp;</div>").style(f'width: 3em; height: 3em;')
-            #blank line
-            ui.separator()
+                                if rider.endswith("r"):
+                                    _element_rouleur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+                                elif rider.endswith("s"):
+                                    _element_sprinteur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+                                else:
+                                    ui.html("<div>&nbsp;</div>").style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+        #scroll to riders
+        rider_pos = [ i for i in range(len(board.array)) if board.get_cell_display(i,0) != "" ]
+        if len(rider_pos) > 0:
+            scroll.scroll_to(percent= min(rider_pos) / i, axis="horizontal")
+        #blank line
+        ui.separator()
+        #minimap
+        with ui.row(wrap=False).classes("gap-0").style("width: 100%;"):
+            for i in range(len(board.array)):
+                cell = board.get_cell(i,0)
+                if cell == CV:
+                    bg_c = "transparent"
+                if cell == CC: # climb
+                    bg_c = "red" # light red
+                if cell == CD: # descent
+                    bg_c = "blue" # blue
+                if cell == CP: # paved
+                    bg_c = "yellow" # yellow
+                if cell == CSU: # supply cell
+                    bg_c = "cyan" # cyan
+                if cell == CS: # start
+                    bg_c = "grey-6" # gray
+                if cell == CF: # finish
+                    bg_c = "grey-6" # gray
+                if cell == CN: #normal
+                    bg_c = "grey-4" # light grey
+                rider = _get_rider(board,i,0)
+                with ui.column().classes("w-full").style("height: 1em") as col:
+                    col.tailwind.background_color(bg_c)
+                    if rider != "-":
+                        ui.icon('circle', color="black")
 
 @ui.refreshable
 def _gui_players(env: FlammeRougeEnv):
