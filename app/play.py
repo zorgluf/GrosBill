@@ -48,7 +48,7 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
                 action = current_player.choose_action(env, choose_best_action = choose_best_action)
 
         obs, _, done, _ , info = env.step(action)
-        if action != -1 and current_player.name == 'human':
+        if current_player.name == 'human' and (type(action) != int or action != -1):
             #record for trajectory
             moves[0].append(obs)
             moves[1].append(action)
