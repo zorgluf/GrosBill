@@ -1,11 +1,9 @@
 import sys
 import numpy as np
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 import random
 import string
 import logging as logger
-import config
-import torch
 
 from sb3_contrib.common.maskable.utils import get_action_masks
 
