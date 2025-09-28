@@ -6,106 +6,41 @@ from torch import Tensor
 from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-MAX_CARDS_PER_PLAYER = 6
-
-class HandModule(th.nn.Module):
-    def __init__(self, flatdim):
-        super().__init__()
-        #Common card layer
-        self.card_dim = int(flatdim / MAX_CARDS_PER_PLAYER)
-        self.card_fe = th.nn.Sequential(
-                    th.nn.Linear(self.card_dim, self.card_dim),
-                    th.nn.ReLU()
-                )
-        
-    def forward(self, hand_obs: th.Tensor):
-        output_list = []
-        for card_obs in th.split(hand_obs.flatten(start_dim=1), self.card_dim, dim=1):
-            output_list.append(self.card_fe(card_obs))
-        return th.cat(output_list, dim=1)
-    
-    @property
-    def output_flatdim(self):
-        return self.card_dim * MAX_CARDS_PER_PLAYER
-
-class CardsPlayedModule(th.nn.Module):
-
-    #OUTPUT_DIM_BY_STONE = 16
-
-    def __init__(self, dim_stones, dim_players, flatdim_cards):
-        super().__init__()
-        self.dim_stones = dim_stones
-        self.dim_players = dim_players
-        #Common cards played per player
-        self.flatdim_cards = flatdim_cards
-        self.cards_player_fe = th.nn.Sequential(
-                    th.nn.Linear(self.flatdim_cards, self.flatdim_cards),
-                    th.nn.ReLU()
-                )
-        #Common merge on one stone
-        self.cards_merge_fe = th.nn.Sequential(
-            th.nn.Linear(dim_players * self.flatdim_cards, dim_players * self.flatdim_cards),
-            th.nn.ReLU()
-        )
-        
-    def forward(self, cardsplayed_obs: th.Tensor):
-        output_list = []
-        for stone_obs in th.split(cardsplayed_obs.flatten(start_dim=1), self.dim_players * self.flatdim_cards, dim=1):
-            intermediate_output = []
-            for stone_player_obs in th.split(stone_obs, self.flatdim_cards, dim=1):
-                intermediate_output.append(self.cards_player_fe(stone_player_obs))
-            output_list.append(self.cards_merge_fe(th.cat(intermediate_output, dim=1)))
-            
-        return th.cat(output_list, dim=1)
-    
-    @property
-    def output_flatdim(self):
-        return self.dim_stones * self.flatdim_cards * self.dim_players
+EMBEDDING_DIM = 32
+NHEAD = 4
 
 class CustomFeatureExtractor(BaseFeaturesExtractor):
 
+    NUM_EMBEDDINGS = 63 # 10*6 for cards + 3 for stone positions
+
     def __init__(self, observation_space: spaces.Dict):
-        #dummy feature dim
-        super().__init__(observation_space, features_dim=1)
+        #feature dim
+        features_dim = spaces.flatdim(observation_space)
+        # Pad features_dim to be a multiple of NHEAD
+        if features_dim % NHEAD != 0:
+            features_dim += NHEAD - (features_dim % NHEAD)
+        super().__init__(observation_space, features_dim=features_dim)
 
-        extractors = {}
-        total_concat_size = 0
-        for key, subspace in observation_space.spaces.items():
-            if key == "current_player":
-                extractors[key] = th.nn.Flatten()
-                total_concat_size += spaces.flatdim(observation_space.spaces["current_player"])
-            if key == "current_player_hand":
-                extractors[key] = HandModule(spaces.flatdim(observation_space.spaces["current_player_hand"]))
-                total_concat_size += extractors[key].output_flatdim
-            if key == "stones":
-                extractors[key] = th.nn.Flatten()
-                total_concat_size += spaces.flatdim(observation_space.spaces["stones"])
-            if key == "cards_played":
-                extractors[key] = CardsPlayedModule(
-                    observation_space.spaces["cards_played"].shape[0],
-                    observation_space.spaces["cards_played"].shape[1],
-                    observation_space.spaces["cards_played"].shape[2] * observation_space.spaces["cards_played"].shape[3]
-                )
-                total_concat_size += extractors[key].output_flatdim
-        
-        self.extractors = th.nn.ModuleDict(extractors)
-        self._features_dim = total_concat_size
-
-        #batch norm layer
-        self.batch_norm = th.nn.BatchNorm1d(total_concat_size)
+        self.embedding = th.nn.Embedding(num_embeddings=self.NUM_EMBEDDINGS, embedding_dim=EMBEDDING_DIM)
 
     def forward(self, obs) -> th.Tensor:
-        encoded_tensor_list = []
-        for key, extractor in self.extractors.items():
-            encoded_tensor_list.append(extractor(obs[key]))
-        return self.batch_norm(th.cat(encoded_tensor_list, dim=1))
+
+        stones = obs["stones"] + 60
+        merged_tensor = th.cat([ obs["current_player_hand"], stones, th.flatten(obs["cards_played"], start_dim=1) ], dim=1).int()
+        # Pad merged_tensor to features_dim
+        batch_size, current_dim = merged_tensor.shape
+        pad_size = self._features_dim - current_dim
+        padding = th.zeros((batch_size, pad_size), dtype=merged_tensor.dtype, device=merged_tensor.device)
+        merged_tensor = th.cat([merged_tensor, padding], dim=1)
+        
+        return self.embedding(merged_tensor)
     
 class CustomNetwork(th.nn.Module):
     """
-    Custom network for policy and value function.
+    Custom network for policy and value function using a two-layer Transformer encoder.
     It receives as input the features extracted by the features extractor.
 
-    :param feature_dim: dimension of the features extracted with the features_extractor (e.g. features from a CNN)
+    :param input_feature_dim: dimension of the features extracted with the features_extractor
     :param last_layer_dim_pi: (int) number of units for the last layer of the policy network
     :param last_layer_dim_vf: (int) number of units for the last layer of the value network
     """
@@ -115,47 +50,48 @@ class CustomNetwork(th.nn.Module):
         input_feature_dim: int,
         last_layer_dim_pi: int = 64,
         last_layer_dim_vf: int = 1,
+        dim_feedforward: int = 128,
     ):
         super().__init__()
 
         self.latent_dim_pi = last_layer_dim_pi
         self.latent_dim_vf = last_layer_dim_vf
 
-        self.l1 = th.nn.Sequential(
-            th.nn.Linear(input_feature_dim, input_feature_dim),
-            th.nn.Dropout(p=0.5),
-            th.nn.ReLU(),
-            th.nn.BatchNorm1d(input_feature_dim),
-            th.nn.Linear(input_feature_dim, input_feature_dim),
-            th.nn.Dropout(p=0.5),
-            th.nn.ReLU(),
-            th.nn.BatchNorm1d(input_feature_dim),
+        # Transformer expects input shape (seq_len, batch, embed_dim)
+        # We'll treat the features as a sequence of length 1
+        encoder_layer = th.nn.TransformerEncoderLayer(
+            d_model=EMBEDDING_DIM,
+            nhead=NHEAD,
+            dim_feedforward=dim_feedforward,
+            batch_first=True,
+            activation="relu"
         )
+        self.transformer_encoder = th.nn.TransformerEncoder(encoder_layer, num_layers=2)
 
         self.policy_head = th.nn.Sequential(
-            th.nn.Linear(input_feature_dim, self.latent_dim_pi),
+            th.nn.Flatten(),
+            th.nn.Linear(input_feature_dim * EMBEDDING_DIM, self.latent_dim_pi),
             th.nn.ReLU(),
         )
-        self.value_head =  th.nn.Sequential(
-            th.nn.Linear(input_feature_dim, self.latent_dim_vf),
+        self.value_head = th.nn.Sequential(
+            th.nn.Flatten(),
+            th.nn.Linear(input_feature_dim * EMBEDDING_DIM, self.latent_dim_vf),
             th.nn.Tanh(),
         )
 
     def forward(self, features: Tensor) -> Tuple[Tensor, Tensor]:
         return self.forward_actor(features), self.forward_critic(features)
-    
-    def _common_forward(self, features: Tensor) -> Tensor:
 
-        return th.add(self.l1(features),features)
+    def _common_forward(self, x: Tensor) -> Tensor:
+        x = self.transformer_encoder(x)
+        return x
 
     def forward_actor(self, features: Tensor) -> Tensor:
-        # Policy network
         extracted_features = self._common_forward(features)
         policy_net = self.policy_head(extracted_features)
         return policy_net
 
     def forward_critic(self, features: Tensor) -> Tensor:
-        # Value network
         extracted_features = self._common_forward(features)
         value_net = self.value_head(extracted_features)
         return value_net

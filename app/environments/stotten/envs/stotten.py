@@ -1,13 +1,8 @@
 import gymnasium as gym
 import numpy as np
 
-import random
-from time import sleep
 import logging as logger
-from functools import cmp_to_key
 from typing import List
-
-from nicegui import app
 
 from .classes import *
 from .render_web import render_web, init_web
@@ -26,10 +21,10 @@ class SchottenTottenEnv(GBEnv):
 
         #Set up observation space
         self.observation_space = gym.spaces.Dict({
-            "current_player_hand": gym.spaces.MultiBinary( [ MAX_CARDS_PER_PLAYER, 9, len(Color) ]), #multibinary of all possible cards combination, per card
-            "stones": gym.spaces.MultiDiscrete([3] * NB_STONES),  # 3 states for each stone position
-            "cards_played": gym.spaces.MultiBinary( [ NB_STONES, 2, 9, len(Color) ]), #multibinary of all possible cards combination for the two side of each stone
-            "current_player": gym.spaces.Discrete(2)  # 0 or 1 for player turn
+            "current_player_hand": gym.spaces.Box(low=0, high=59, dtype=np.int8, shape= ( MAX_CARDS_PER_PLAYER, )), #multibinary of all possible cards combination, per card
+            "stones": gym.spaces.Box(low=0, high=2, dtype=np.int8, shape = (NB_STONES,)),  # 3 states for each stone position, 0 : current player position, 1 : neutral, 2 : opponent position
+            "cards_played": gym.spaces.Box(low=0, high=59, dtype=np.int8, shape= ( NB_STONES, 2, 3 )), #multibinary of all played cards for the two side of each stone
+                # [x, 0, y] : y card from the current player played on stone x
         })
 
         #Set up the action space
@@ -60,23 +55,36 @@ class SchottenTottenEnv(GBEnv):
 
     @property
     def observation(self):
-        current_player_hand_list = [ Deck([card]).observation for card in self.board.players[self.current_player].hand ]
-        for i in range(len(current_player_hand_list),MAX_CARDS_PER_PLAYER):
-            current_player_hand_list.append(np.zeros([9,6]))
-        current_player_hand = np.stack(current_player_hand_list)
-        stones = [ position.value for position in self.board.stones ]
+        current_player_hand = self.board.players[self.current_player].hand.observation
+        while len(current_player_hand) < MAX_CARDS_PER_PLAYER:
+            current_player_hand = np.append(current_player_hand,[0])
+        stones = list()
+        for position in self.board.stones:
+            if position == StonePosition.NEUTRAL:
+                stones.append(1)
+            elif position == (StonePosition.PLAYER1 if self.current_player == PlayerId.PLAYER1.value else StonePosition.PLAYER2):
+                stones.append(0)
+            else:
+                stones.append(2)
         #build cards_played obs
         cards_by_stone = list()
         for i in range(NB_STONES):
-            cards_by_stone.append(np.stack([ self.board.played_cards[i][self.current_player].observation, self.board.played_cards[i][self.current_opponent].observation ]))
-            #cards_by_stone.append(np.stack([ self.board.played_cards[i][PlayerId.PLAYER1.value].observation, self.board.played_cards[i][PlayerId.PLAYER2.value].observation ]))
+            cards_p1 = Deck(self.board.played_cards[i][PlayerId.PLAYER1.value]).observation
+            while len(cards_p1) < 3:
+                cards_p1 = np.append(cards_p1, [0])
+            cards_p2 = Deck(self.board.played_cards[i][PlayerId.PLAYER2.value]).observation
+            while len(cards_p2) < 3:
+                cards_p2 = np.append(cards_p2, [0])
+            if self.current_player == PlayerId.PLAYER1.value:
+                cards_by_stone.append(np.stack([np.stack(cards_p1), np.stack(cards_p2)]))
+            else:
+                cards_by_stone.append(np.stack([np.stack(cards_p2), np.stack(cards_p1)]))
         cards_played = np.stack(cards_by_stone)
 
         return dict(
             current_player_hand = current_player_hand,
             stones = stones,
             cards_played = cards_played,
-            current_player = self.current_player
         )
     
     def _get_info(self):

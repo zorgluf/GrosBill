@@ -11,8 +11,21 @@ class PlayerId(Enum):
     PLAYER1 = 0
     PLAYER2 = 1
 
+class Color(Enum):
+    RED = 0
+    GREEN = 1
+    BLUE = 2
+    YELLOW = 3
+    BLACK = 4
+    ORANGE = 5
+
+class StonePosition(Enum):
+    NEUTRAL = 1
+    PLAYER1 = 0
+    PLAYER2 = 2
+
 class Card():
-    def __init__(self, value, color):
+    def __init__(self, value, color: Color):
         self._color = color
         self._value = value
         
@@ -61,9 +74,9 @@ class Deck():
     
     @property
     def observation(self):
-        obs = np.zeros([ 9, len(Color)])
-        for card in self.cards:
-            obs[card.value - 1, card.color.value] = 1
+        obs = np.zeros([ len(self.cards) ])
+        for i, card in enumerate(self.cards):
+            obs[i] = card.value + card.color.value * 10
         return obs
 
 class Player():
@@ -87,19 +100,6 @@ class Player():
         Get the player's hand.
         """
         return self._hand
-
-class Color(Enum):
-    RED = 0
-    GREEN = 1
-    BLUE = 2
-    YELLOW = 3
-    BLACK = 4
-    ORANGE = 5
-
-class StonePosition(Enum):
-    NEUTRAL = 1
-    PLAYER1 = 0
-    PLAYER2 = 2
 
 
 class Board():
