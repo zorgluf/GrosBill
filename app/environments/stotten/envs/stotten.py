@@ -214,7 +214,7 @@ class SchottenTottenEnv(GBEnv):
         """
         Compute the current virtual score for one player
         1 point for each stone claimed, 1 point for each continuous stone claimed
-        10 point if winning the game (3 continuois stones claimed or 5 stones claimed)
+        10 point if winning the game (3 continuous stones claimed or 5 stones claimed)
         """
         score = 0
         stones = 0
@@ -222,7 +222,6 @@ class SchottenTottenEnv(GBEnv):
         for stone_idx in range(NB_STONES):
             if self.board.stones[stone_idx].value == player * 2:
                 stones += 1
-                score += self.score_stone(self.board.played_cards[stone_idx][player])
         if stones >= 5:
             return WIN_SCORE
         #check if continuous stone
