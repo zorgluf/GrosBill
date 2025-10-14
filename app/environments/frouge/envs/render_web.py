@@ -88,11 +88,11 @@ def _gui_board(env, callback):
                                 ui.button("-", on_click=lambda x=(i,r): _on_click_cell_listener(x[0],x[1],env,callback)).style("width: 3em; height: 3em;").classes("gap-0 m-0 p-0")
                             else:
                                 if rider.endswith("r"):
-                                    _element_rouleur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+                                    _element_rouleur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}; background-color: {bg_c}')
                                 elif rider.endswith("s"):
-                                    _element_sprinteur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+                                    _element_sprinteur(_get_rider_color(board,i,r)).style(f'width: 3em; height: 3em; {style_border}; background-color: {bg_c}')
                                 else:
-                                    ui.html("<div>&nbsp;</div>").style(f'width: 3em; height: 3em; {style_border}').tailwind.background_color(bg_c)
+                                    ui.html("<div>&nbsp;</div>", sanitize=False).style(f'width: 3em; height: 3em; {style_border}; background-color: {bg_c}')
         #scroll to riders
         rider_pos = [ i for i in range(len(board.array)) if board.get_cell_display(i,0) != "" ]
         if len(rider_pos) > 0:
@@ -120,8 +120,7 @@ def _gui_board(env, callback):
                 if cell == CN: #normal
                     bg_c = "grey-4" # light grey
                 rider = _get_rider(board,i,0)
-                with ui.column().classes("w-full").style("height: 1em") as col:
-                    col.tailwind.background_color(bg_c)
+                with ui.column().classes("w-full").style(f"height: 1em; background-color: {bg_c}"):
                     if rider != "-":
                         ui.icon('circle', color="black")
 
@@ -132,16 +131,16 @@ def _gui_players(env: FlammeRougeEnv):
         with ui.grid(columns=6):
             ui.label("-")
             for p in env.board.players:
-                ui.label(f"{p.name}").tailwind.text_color(_get_player_color(p.n))
+                ui.label(f"{p.name}").style(f"color: {_get_player_color(p.n)}")
             ui.label("Rouleur")
             for p in env.board.players:
                 card = env.last_played_cards[(p,"r")]
                 penalty = str(p.n)+"r" in env.penalty
                 if card != None:
                     with ui.row().classes("border"):
-                        ui.label(card.name).tailwind.text_color(_get_player_color(p.n))
+                        ui.label(card.name).style(f"color: {_get_player_color(p.n)}")
                         if penalty:
-                            ui.label("X").tailwind.background_color("red-10")
+                            ui.label("X").style("background-color: red-10")
                 else:
                     ui.label("-")
             ui.label("Sprinter")
@@ -150,12 +149,12 @@ def _gui_players(env: FlammeRougeEnv):
                 penalty = str(p.n)+"s" in env.penalty
                 if card != None:
                     with ui.row().classes("border"):
-                        ui.label(card.name).tailwind.text_color(_get_player_color(p.n))
+                        ui.label(card.name).style(f"color: {_get_player_color(p.n)}")
                         if penalty:
-                            ui.label("X").tailwind.background_color("red-10")
+                            ui.label("X").style("background-color: red-10")
                 else:
                     ui.label("-")
-    ui.label(f"Player {env.score_game().index(max(env.score_game()))+1} WIN !!!!").bind_visibility_from(env, "done").classes("text-h6").tailwind.text_color("red")
+    ui.label(f"Player {env.score_game().index(max(env.score_game()))+1} WIN !!!!").bind_visibility_from(env, "done").classes("text-h6").style("color: red")
 
 @ui.refreshable
 def _gui_human_actions(env: FlammeRougeEnv, callback, suggested_action = None):
@@ -222,13 +221,13 @@ def _element_rouleur(color: str):
   </g>
  </g>
 </svg>'''
-    return ui.html(content)
+    return ui.html(content, sanitize=False)
 
 def _element_star():
     content = '''<svg viewBox="0 0 300 275" xmlns="http://www.w3.org/2000/svg" version="1.1">
   <polygon fill="#fdff00" stroke="#605a00" stroke-width="15" points="150,25  179,111 269,111 197,165                     223,251  150,200 77,251  103,165                     31,111 121,111"/>
 </svg>'''
-    return ui.html(content)
+    return ui.html(content, sanitize=False)
 
 @ui.refreshable
 def _element_sprinteur(color: str):
@@ -282,6 +281,6 @@ def _element_sprinteur(color: str):
     </g>
   </g>
 </svg>'''
-    return ui.html(content)
+    return ui.html(content, sanitize=False)
 
     

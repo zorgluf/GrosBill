@@ -1,19 +1,20 @@
-FROM python:3.10
+FROM python:3.12
 
 #fix for import cv2
 RUN apt-get update && \
-    apt-get -y --no-install-recommends install libgl1-mesa-glx
+    apt-get -y --no-install-recommends install libgl1 libglx-mesa0 
 
 EXPOSE 8080
 
 RUN useradd -ms /bin/bash selfplay
-USER selfplay
 ENV PATH="/home/selfplay/.local/bin:${PATH}"
 WORKDIR /app
 
 COPY --chown=selfplay:selfplay ./app .
 RUN rm -rf ./zoo
 COPY --chown=selfplay:selfplay ./app/zoo/pretrained ./zoo/pretrained
+
+USER selfplay
 
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.python.org/simple
