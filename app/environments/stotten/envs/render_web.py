@@ -18,8 +18,8 @@ def _get_card_element(card: Card, add_star = False):
     with ui.card().tight().style("width:10vw; aspect-ratio: 1 / 1;"):
         if add_star:
             _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
-        ui.label(f"{card.value}").style("font-size: 10vw; width:100%; text-align: center; line-height: normal").tailwind.text_color(card.color.name.lower())
-        ui.label(f"{card.value}").style("width: 10%; position: absolute; top: 0px; right: 0px;").tailwind.text_color(card.color.name.lower())
+        ui.label(f"{card.value}").style(f"font-size: 10vw; width:100%; text-align: center; line-height: normal; color: {card.color.name.lower()}")
+        ui.label(f"{card.value}").style(f"width: 10%; position: absolute; top: 0px; right: 0px; color: {card.color.name.lower()}")
 
 @ui.refreshable
 def _gui_board(env, callback, suggested_action = None):
@@ -35,18 +35,17 @@ def _gui_board(env, callback, suggested_action = None):
         for i in range(NB_STONES):
             with ui.column().on("click",lambda i=i: _action_play_card(i, callback, env)).classes("gap-2"):
                 if (env.current_player == PlayerId.PLAYER1.value and board.stones[i] == StonePosition.PLAYER2) or (env.current_player == PlayerId.PLAYER2.value and board.stones[i] == StonePosition.PLAYER1):
-                    ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
+                    ui.element("div").style("width: 10vw; height:5vh; background-color: grey")
                 else:
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if board.stones[i] == StonePosition.NEUTRAL:
-                    with ui.element("div").style("width: 10vw; height:5vh; position: relative") as stone_element:
-                        stone_element.tailwind.background_color("grey")
+                    with ui.element("div").style("width: 10vw; height:5vh; position: relative; background-color: grey"):
                         if type(suggested_action) != None.__class__ and suggested_action[1] == i:
                             _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
                 else:
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                 if (env.current_player == PlayerId.PLAYER1.value and board.stones[i] == StonePosition.PLAYER1) or (env.current_player == PlayerId.PLAYER2.value and board.stones[i] == StonePosition.PLAYER2):
-                    ui.element("div").style("width: 10vw; height:5vh").tailwind.background_color("grey")
+                    ui.element("div").style("width: 10vw; height:5vh; background-color: grey")
                 else:
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
         # Current player's cards on stone

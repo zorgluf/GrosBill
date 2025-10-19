@@ -9,7 +9,7 @@ from .render_web import render_web, init_web
 
 from utils.env import GBEnv
 
-WIN_SCORE = 10000
+WIN_SCORE = 10
 
 class SchottenTottenEnv(GBEnv):
 
@@ -132,21 +132,23 @@ class SchottenTottenEnv(GBEnv):
     def can_claim_stone(self, stone_idx) -> bool:
         """
         Check if the current player can claim a stone.
+        Check also if the opponent can claim it in case of 3 cards on each side.
+        return Tuple(bool, bool) : current player can claim, opponent can claim
         """
         if self.board.stones[stone_idx] != StonePosition.NEUTRAL:
-            return False
+            return (False, False)
         if len(self.board.played_cards[stone_idx][self.current_player]) == 3:
             if len(self.board.played_cards[stone_idx][self.current_opponent]) == 3:
                 # if 3 card on each side, check if the current player has the best combination
                 score_stone_current = self.score_stone(self.board.played_cards[stone_idx][self.current_player])
                 score_stone_opponent = self.score_stone(self.board.played_cards[stone_idx][self.current_opponent])
                 if score_stone_current > score_stone_opponent:
-                    return True
+                    return (True, False)
                 else:
                     if score_stone_current == score_stone_opponent:
                         #special case : the first one to play the stone wins, so it is the opponent that can claim the stone
                         self.board.stones[stone_idx] = StonePosition.PLAYER2 if self.current_player == PlayerId.PLAYER1.value else StonePosition.PLAYER1
-                    return False
+                    return (False, True)
             else:
                 if len(self.board.played_cards[stone_idx][self.current_opponent]) == 2:
                     # if other side has 2 cards, and 3 on player side, compute all combination to see if opponent can win
@@ -162,12 +164,13 @@ class SchottenTottenEnv(GBEnv):
                         dummy_stone_cards.add([card])
                         score_stone_opponent = self.score_stone(dummy_stone_cards)
                         if score_stone_current <= score_stone_opponent:
-                            return False
-                    return True
-        return False
+                            return (False, False)
+                    return (True, False)
+        return (False, False)
 
     def step(self, action: List[int]|int):
         terminated = False
+        reward = [0., 0.]
 
         # check move legality
         if (type(action) != int) and (self.action_masks()[action[0]] == False or self.action_masks()[action[1] + MAX_CARDS_PER_PLAYER] == False):
@@ -184,20 +187,42 @@ class SchottenTottenEnv(GBEnv):
         #Check if current player can claim a stone
         if self.current_player != -1:
             for stone_idx in range(NB_STONES):
-                if self.can_claim_stone(stone_idx):
+                if self.can_claim_stone(stone_idx)[0]:
                     if self.current_player == PlayerId.PLAYER1.value:
                         self.board.stones[stone_idx] = StonePosition.PLAYER1
+                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER1:
+                            reward[self.current_player] += 1.0
+                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER1:
+                            reward[self.current_player] += 1.0
                     else:
                         self.board.stones[stone_idx] = StonePosition.PLAYER2
+                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER2:
+                            reward[self.current_player] += 1.0
+                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER2:
+                            reward[self.current_player] += 1.0
+                    reward[self.current_player] += 1.0
+                if self.can_claim_stone(stone_idx)[1]:
+                    if self.current_opponent == PlayerId.PLAYER1.value:
+                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER1:
+                            reward[self.current_player] -= 1.0
+                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER1:
+                            reward[self.current_player] -= 1.0
+                    else:
+                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER2:
+                            reward[self.current_player] -= 1.0
+                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER2:
+                            reward[self.current_player] -= 1.0
+                    reward[self.current_player] -= 1.0
         #draw a card from the main deck
         if len(self.board.main_deck) > 0:
             card = self.board.main_deck.draw(1)
             self.board.players[self.current_player].hand.add(card)
-        #Compute reward for current player
+        #check if we win
         after_score = self.compute_score(self.current_player)
-        reward = [0., 0.]
+        if after_score >= WIN_SCORE:
+            reward[self.current_player] = WIN_SCORE
         #scale reward into [0;1]
-        reward[self.current_player] = (after_score - init_score) / WIN_SCORE
+        reward[self.current_player] = reward[self.current_player] / WIN_SCORE
         #check if we are done
         after_score_opponent = self.compute_score(self.current_opponent)
         if (after_score >= WIN_SCORE) or (after_score_opponent >= WIN_SCORE):
@@ -231,13 +256,13 @@ class SchottenTottenEnv(GBEnv):
                 if stone_idx > 0:
                     if self.board.stones[stone_idx - 1].value == player * 2:
                         cont_score += 1
-                        score += 1000
+                        score += 1
                         if cont_score >= 2:
                             return WIN_SCORE
                         continue
             cont_score = 0
 
-        return score + stones * 1000
+        return score + stones
 
     def render(self, **kwargs):
         super().render(**kwargs)
