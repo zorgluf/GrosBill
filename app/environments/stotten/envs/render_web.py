@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .stotten import SchottenTottenEnv
 
-from nicegui import ui
+from nicegui import context, ui
 
 from .classes import *
 
@@ -27,7 +27,7 @@ def _gui_board(env, callback, suggested_action = None):
     with ui.grid(columns=NB_STONES).classes("gap-0"):
         # Opponent's cards on stone
         for i in range(NB_STONES):
-            with ui.column().classes("gap-0").style("position: relative; height: 15vw;"):
+            with ui.column().classes("gap-0").style("position: relative; height: 25vh;"):
                 for i, c in enumerate(board.played_cards[i][abs(env.current_player -1)]):
                     with ui.element("div").style(f"position: absolute; margin-top: {i * 15}%;"):
                         _get_card_element(c)
@@ -50,32 +50,31 @@ def _gui_board(env, callback, suggested_action = None):
                     ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
         # Current player's cards on stone
         for i in range(NB_STONES):
-            with ui.column().classes("gap-0").style("position: relative; height: 15vw;"):
+            with ui.column().classes("gap-0").style("position: relative; height: 25vh;"):
                 for i, c in enumerate(board.played_cards[i][env.current_player]):
                     with ui.element("div").style(f"position: absolute; margin-top: {i * 15}%;"):
                         _get_card_element(c)
 
 @ui.refreshable
 def _gui_hand(env: SchottenTottenEnv, callback, suggested_action = None):
-    ui.label().bind_text_from(env, 'current_player', backward=lambda i: f"Player {env.board.players[i].name} hand")
-    with ui.row().bind_visibility_from(env, 'done', backward=lambda x: not x):
+    ui.label().bind_text_from(env, 'current_player', backward=lambda i: f"Player {env.board.players[i].name} hand").style("height: 5vh")
+    with ui.row().bind_visibility_from(env, 'done', backward=lambda x: not x).classes("gap-0").style("height: 25vh; width: 100%;"):
         cards = env.board.players[env.current_player].hand
-        card_toggle = ui.toggle(dict(enumerate([''] * len(cards)))).bind_value_to(env,"gui_hand_card_selected")
+        card_toggle = ui.toggle(dict(enumerate([''] * len(cards)))).bind_value_to(env,"gui_hand_card_selected").classes("gap-0").style("height: 25vh; width: 100%")
         for i, card in enumerate(env.board.players[env.current_player].hand):
-            with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1})'):
+            with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1}) .q-btn__content'):
                 add_star = type(suggested_action) != None.__class__ and suggested_action[0] == i
                 _get_card_element(card, add_star=add_star)
 
 def init_web(env: SchottenTottenEnv, callback = None):
-    with ui.column():
+    context.client.content.classes('p-0')
+    with ui.column().classes("gap-0"):
         _gui_board(env, callback)
         _gui_hand(env, callback)
 
 def render_web(env: SchottenTottenEnv, callback = None, suggested_action = None, **kwargs):
     _gui_board.refresh(env, callback, suggested_action)
     _gui_hand.refresh(env, callback, suggested_action)
-    #TODO handle finish game (do a last update on ui and print the winner)
-
 
 def _element_star():
     content = '''<svg viewBox="0 0 300 275" xmlns="http://www.w3.org/2000/svg" version="1.1">
