@@ -56,7 +56,7 @@ def load_model(env, name, device):
                 cont = False
             except Exception as e:
                 time.sleep(5)
-                print(e)
+                logger.error(e)
     
     elif os.path.exists(filename_pretrained):
         logger.info(f'Loading {name}')
@@ -67,7 +67,7 @@ def load_model(env, name, device):
                 cont = False
             except Exception as e:
                 time.sleep(5)
-                print(e)
+                logger.error(e)
     
     elif name == 'base.zip':
         cont = True

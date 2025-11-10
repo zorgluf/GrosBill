@@ -15,11 +15,11 @@ def _action_play_card(stone_idx:int, play_callback, env: SchottenTottenEnv):
 
 @ui.refreshable
 def _get_card_element(card: Card, add_star = False):
-    with ui.card().tight().style("width:10vw; aspect-ratio: 1 / 1;"):
+    with ui.card().tight().style("width:10vw; height:15vh;"):
         if add_star:
             _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
-        ui.label(f"{card.value}").style(f"font-size: 10vw; width:100%; text-align: center; line-height: normal; color: {card.color.name.lower()}")
-        ui.label(f"{card.value}").style(f"width: 10%; position: absolute; top: 0px; right: 0px; color: {card.color.name.lower()}")
+        ui.label(f"{card.value}").style(f"font-size: 15vh; width:100%; text-align: center; line-height: normal; color: {card.color.name.lower()}")
+        ui.label(f"{card.value}").style(f"line-height: 4vh; font-size: 4vh; position: absolute; top: 0px; right: 0px; color: {card.color.name.lower()}")
 
 @ui.refreshable
 def _gui_board(env, callback, suggested_action = None):
@@ -52,7 +52,7 @@ def _gui_board(env, callback, suggested_action = None):
         for i in range(NB_STONES):
             with ui.column().classes("gap-0").style("position: relative; height: 25vh;"):
                 for i, c in enumerate(board.played_cards[i][env.current_player]):
-                    with ui.element("div").style(f"position: absolute; margin-top: {i * 15}%;"):
+                    with ui.element("div").style(f"position: absolute; margin-top: {i * 5}vh;"):
                         _get_card_element(c)
 
 @ui.refreshable
@@ -61,6 +61,7 @@ def _gui_hand(env: SchottenTottenEnv, callback, suggested_action = None):
     with ui.row().bind_visibility_from(env, 'done', backward=lambda x: not x).classes("gap-0").style("height: 25vh; width: 100%;"):
         cards = env.board.players[env.current_player].hand
         card_toggle = ui.toggle(dict(enumerate([''] * len(cards)))).bind_value_to(env,"gui_hand_card_selected").classes("gap-0").style("height: 25vh; width: 100%")
+        ui.query(f'#{card_toggle.html_id} > button').classes("gap-0").style("padding: 0 2vw 0 2vw;")
         for i, card in enumerate(env.board.players[env.current_player].hand):
             with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1}) .q-btn__content'):
                 add_star = type(suggested_action) != None.__class__ and suggested_action[0] == i
