@@ -73,11 +73,11 @@ def _gui_board(env, callback):
                             if cell == CSU: # supply cell
                                 bg_c = "cyan" # cyan
                             if cell == CS: # start
-                                bg_c = "grey-6" # gray
+                                bg_c = "darkgrey" # gray
                             if cell == CF: # finish
-                                bg_c = "grey-6" # gray
+                                bg_c = "darkgrey" + "; " + CHESSBOARD_PATTERN # gray
                             if cell == CN: #normal
-                                bg_c = "grey-4" # light grey
+                                bg_c = "lightgrey" # light grey
                             rider = _get_rider(board,i,r)
                             style_border = "border-top: 3px solid white; padding-top: 3px;" if r == 0 else "border-top: 2px dashed white; padding-top: 2px;"
                             if cell != CV:
@@ -114,11 +114,11 @@ def _gui_board(env, callback):
                 if cell == CSU: # supply cell
                     bg_c = "cyan" # cyan
                 if cell == CS: # start
-                    bg_c = "grey-6" # gray
+                    bg_c = "darkgrey" # gray
                 if cell == CF: # finish
-                    bg_c = "grey-6" # gray
+                    bg_c = "darkgrey" + "; " + CHESSBOARD_PATTERN # gray
                 if cell == CN: #normal
-                    bg_c = "grey-4" # light grey
+                    bg_c = "lightgrey" # light grey
                 rider = _get_rider(board,i,0)
                 with ui.column().classes("w-full").style(f"height: 1em; background-color: {bg_c}"):
                     if rider != "-":
@@ -140,7 +140,7 @@ def _gui_players(env: FlammeRougeEnv):
                     with ui.row().classes("border"):
                         ui.label(card.name).style(f"color: {_get_player_color(p.n)}")
                         if penalty:
-                            ui.label("X").style("background-color: red-10")
+                            ui.label("X").style("background-color: red")
                 else:
                     ui.label("-")
             ui.label("Sprinter")
@@ -151,7 +151,7 @@ def _gui_players(env: FlammeRougeEnv):
                     with ui.row().classes("border"):
                         ui.label(card.name).style(f"color: {_get_player_color(p.n)}")
                         if penalty:
-                            ui.label("X").style("background-color: red-10")
+                            ui.label("X").style("background-color: red")
                 else:
                     ui.label("-")
     ui.label(f"Player {env.score_game().index(max(env.score_game()))+1} WIN !!!!").bind_visibility_from(env, "done").classes("text-h6").style("color: red")
@@ -283,4 +283,12 @@ def _element_sprinteur(color: str):
 </svg>'''
     return ui.html(content, sanitize=False)
 
-    
+CHESSBOARD_PATTERN = '''
+background: conic-gradient(
+    #fff 0.25turn,
+    #000 0.25turn 0.5turn,
+    #fff 0.5turn 0.75turn,
+    #000 0.75turn
+)
+top left / 100% 100% repeat;
+'''
