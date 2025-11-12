@@ -5,7 +5,7 @@ import logging as logger
 from typing import List
 
 from .classes import *
-from .render_web import render_web, init_web
+from .render_web import RenderWeb
 
 from utils.env import GBEnv
 
@@ -264,9 +264,10 @@ class SchottenTottenEnv(GBEnv):
 
         return score + stones
 
+    def nicegui_page(self):
+        self.render_web = RenderWeb()
+        self.render_web.init_web(self)
+
     def render(self, **kwargs):
         super().render(**kwargs)
-        render_web(self, **kwargs)
-
-    def nicegui_page(self):
-        init_web(self)
+        self.render_web.render_web(self, **kwargs)

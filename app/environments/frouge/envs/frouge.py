@@ -10,7 +10,7 @@ from typing import List
 from nicegui import app
 
 from .classes import *
-from .render_web import render_web, init_web
+from .render_web import RenderWeb
 
 from utils.env import GBEnv
 
@@ -389,10 +389,11 @@ class FlammeRougeEnv(GBEnv):
         return self.observation, self._get_info()
 
     def nicegui_page(self):
-        init_web(self)
+        self.render_web = RenderWeb()
+        self.render_web.init_web(self)
 
     def render(self, **kwargs):
         super().render(**kwargs)
-        render_web(self, **kwargs)
+        self.render_web.render_web(self, **kwargs)
       
 
