@@ -66,7 +66,7 @@ def save_trajectory(observations, actions, env_name):
     #save trajectory
     traj = Trajectory(obs=observations, acts=actions, infos=None, terminal=True)
     if os.path.exists(get_trajectory_path(env_name)):
-        trajectories = serialize.load(get_trajectory_path(env_name))
+        trajectories = list(serialize.load(get_trajectory_path(env_name)))
     else:
         trajectories = []
     trajectories.append(traj)
