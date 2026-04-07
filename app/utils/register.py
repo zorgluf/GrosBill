@@ -32,5 +32,5 @@ def get_trajectory_path(env_name: str):
     dir = f"zoo/trajectories/{env_name}"
     if os.path.exists(dir) == False:
         os.makedirs(dir)
-    return os.path.join(dir,"expert_traj.npz")
+    return dir
 

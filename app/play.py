@@ -1,17 +1,20 @@
 from nicegui import ui, app
 import random
 import os
+import shutil
 from utils.agents import Agent
 from utils.files import load_model
 from utils.register import get_trajectory_path
+from utils.experts import load_trajectories, save_trajectories
 from typing import List, Tuple
 from utils.env import GBEnv
 from dataclasses import dataclass
 
 from imitation.data.types import Trajectory
 from imitation.data import serialize
-from numpy import ndarray
-import numpy as np
+from imitation.data.huggingface_utils import trajectories_to_dataset
+from imitation.util.util import parse_path
+import datasets
 
 @ui.refreshable
 def _gui_generic_buttons(env: GBEnv, callback = None):
@@ -65,12 +68,9 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
 def save_trajectory(observations, actions, env_name):
     #save trajectory
     traj = Trajectory(obs=observations, acts=actions, infos=None, terminal=True)
-    if os.path.exists(get_trajectory_path(env_name)):
-        trajectories = list(serialize.load(get_trajectory_path(env_name)))
-    else:
-        trajectories = []
+    trajectories = load_trajectories(env_name)
     trajectories.append(traj)
-    serialize.save(get_trajectory_path(env_name), trajectories)
+    save_trajectories(trajectories, env_name)
 
 def load_agents(env, agent_names, device):
 
@@ -101,42 +101,32 @@ class PlayOptions:
     suggest = False
     record = False
 
+def create_game_page(env_class, env_name, agents_names, agent_load_names):
+    env = env_class(player_names=agents_names)
+    # set seed
+    seed = random.randint(0,1000)
+    obs, _ = env.reset(seed = seed)
+    # load agents
+    agents = load_agents(env, agent_load_names, "cpu")
+    # start gui
+    env.nicegui_page()
+    _gui_generic_buttons(env,)
+    # play game
+    play_step(env, agents, pov_player=agents_names.index('human'), suggest=app.storage.user["options"].suggest, moves=[[obs],[]])
+
 @ui.page('/frouge')
 def frouge_page():
     from environments.frouge.envs.frouge import FlammeRougeEnv
 
     agents_names = ['human', 'best_model1', 'best_model2', 'best_model3', 'best_model4']
-    pov_player = agents_names.index('human')
-    env = FlammeRougeEnv(player_names=agents_names)
-    # set seed
-    seed = random.randint(0,1000)
-    obs, _ = env.reset(seed = seed)
-    # load agents
-    agents = load_agents(env, ['human', 'best_model', 'best_model', 'best_model', 'best_model'], "cpu")
-    # start gui
-    env.nicegui_page()
-    _gui_generic_buttons(env,)
-    # play game
-    play_step(env, agents, pov_player=pov_player, suggest=app.storage.user["options"].suggest, moves=[[obs],[]])
+    create_game_page(FlammeRougeEnv, 'frouge', agents_names, ['human', 'best_model', 'best_model', 'best_model', 'best_model'])
 
 @ui.page('/stotten')
 def stotten_page():
-    #TODO : refactor this to use the same code as frouge_page
     from environments.stotten.envs.stotten import SchottenTottenEnv
 
     agents_names = ['human', 'computer']
-    pov_player = agents_names.index('human')
-    env = SchottenTottenEnv(player_names=agents_names)
-    # set seed
-    seed = random.randint(0,1000)
-    obs, _ = env.reset(seed = seed)
-    # load agents
-    agents = load_agents(env, ['human', 'best_model'], "cpu")
-    # start gui
-    env.nicegui_page()
-    _gui_generic_buttons(env,)
-    # play game
-    play_step(env, agents, pov_player=pov_player, suggest=app.storage.user["options"].suggest, moves=[[obs],[]])
+    create_game_page(SchottenTottenEnv, 'stotten', agents_names, ['human', 'best_model'])
 
 
 @ui.page('/')
@@ -150,6 +140,19 @@ def index():
         ui.label('Suggest action:')
         ui.toggle({True:"Yes",False:"No"}).bind_value(app.storage.user["options"], 'suggest')
         ui.toggle({True:"Record for future learning",False:"No"}).bind_value(app.storage.user["options"], 'record')
+    
+    # Display number of trajectories recorded for each game
+    with ui.row():
+        frouge_traj_count = count_trajectories('frouge')
+        stotten_traj_count = count_trajectories('stotten')
+        ui.label(f'Flamme Rouge trajectories: {frouge_traj_count}')
+        ui.label(f'Schotten Totten trajectories: {stotten_traj_count}')
+
+
+def count_trajectories(env_name):
+    """Count the number of trajectories recorded for a given environment."""
+    trajectories = load_trajectories(env_name)
+    return len(trajectories)
 
 if __name__ in {"__main__", "__mp_main__"}:
 
