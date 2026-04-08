@@ -6,12 +6,23 @@ from torch import Tensor
 from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-EMBEDDING_DIM = 64
-NHEAD = 16
+EMBEDDING_DIM = 16
+NHEAD = 1
+
+
+def init_weights(module):
+    if isinstance(module, th.nn.Linear):
+        th.nn.init.xavier_uniform_(module.weight)
+        if module.bias is not None:
+            th.nn.init.constant_(module.bias, 0)
+    elif isinstance(module, th.nn.LayerNorm):
+        th.nn.init.constant_(module.weight, 1.0)
+        th.nn.init.constant_(module.bias, 0)
 
 class CustomFeatureExtractor(BaseFeaturesExtractor):
 
-    NUM_EMBEDDINGS = 63 # 10*6 for cards + 3 for stone positions
+    NUM_EMBEDDINGS = 64 # 10*6 for cards + 3 for stone positions
+    #NUM_EMBEDDINGS = 63 # 10*6 for cards + 3 for stone positions
 
     def __init__(self, observation_space: spaces.Dict):
         #feature dim
@@ -19,7 +30,7 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
         # Pad features_dim to be a multiple of NHEAD
         if features_dim % NHEAD != 0:
             features_dim += NHEAD - (features_dim % NHEAD)
-        features_dim = features_dim * EMBEDDING_DIM
+        #features_dim = features_dim * EMBEDDING_DIM
         super().__init__(observation_space, features_dim=features_dim)
 
         self.embedding = th.nn.Embedding(num_embeddings=self.NUM_EMBEDDINGS, embedding_dim=EMBEDDING_DIM)
@@ -29,13 +40,13 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
         stones = obs["stones"] + 60
         merged_tensor = th.cat([ obs["current_player_hand"], stones, th.flatten(obs["cards_played"], start_dim=1) ], dim=1).int()
         # Pad merged_tensor to features_dim
-        batch_size, current_dim = merged_tensor.shape
-        pad_size = int(self._features_dim / EMBEDDING_DIM) - current_dim
-        padding = th.zeros((batch_size, pad_size), dtype=merged_tensor.dtype, device=merged_tensor.device)
-        merged_tensor = th.cat([merged_tensor, padding], dim=1)
+        #batch_size, current_dim = merged_tensor.shape
+        #pad_size = int(self._features_dim / EMBEDDING_DIM) - current_dim
+        #padding = th.zeros((batch_size, pad_size), dtype=merged_tensor.dtype, device=merged_tensor.device)
+        #merged_tensor = th.cat([merged_tensor, padding], dim=1)
         
-        #return self.embedding(merged_tensor)
-        return th.flatten(self.embedding(merged_tensor), start_dim=1)
+        return self.embedding(merged_tensor)
+        #return th.flatten(self.embedding(merged_tensor), start_dim=1)
     
 class CustomNetwork(th.nn.Module):
     """
@@ -52,7 +63,7 @@ class CustomNetwork(th.nn.Module):
         input_feature_dim: int,
         last_layer_dim_pi: int = 64,
         last_layer_dim_vf: int = 1,
-        dim_feedforward: int = 1024,
+        dim_feedforward: int = 512,
     ):
         super().__init__()
 
@@ -68,7 +79,10 @@ class CustomNetwork(th.nn.Module):
             batch_first=True,
             activation="relu"
         )
-        self.transformer_encoder = th.nn.TransformerEncoder(encoder_layer, num_layers=8)
+        self.transformer_encoder = th.nn.TransformerEncoder(encoder_layer, num_layers=4)
+        # Appliquer l'initialisation à chaque couche
+        for layer in self.transformer_encoder.layers:
+            layer.apply(init_weights)
 
         self.policy_head = th.nn.Sequential(
             th.nn.Flatten(),
@@ -80,6 +94,7 @@ class CustomNetwork(th.nn.Module):
             th.nn.Linear(input_feature_dim * EMBEDDING_DIM, self.latent_dim_vf),
             th.nn.Tanh(),
         )
+
 
     def forward(self, features: Tensor) -> Tuple[Tensor, Tensor]:
         return self.forward_actor(features), self.forward_critic(features)
@@ -115,13 +130,13 @@ class CustomPolicy(MaskableMultiInputActorCriticPolicy):
             action_space,
             lr_schedule,
             features_extractor_class=CustomFeatureExtractor,
-            net_arch=dict(pi=[ 500, 300, 100 ],vf=[500, 300, 100]),
+            #net_arch=dict(pi=[ 500, 300, 100 ],vf=[500, 300, 100]),
             *args,
             **kwargs,
         )
     
-#    def _build_mlp_extractor(self) -> None:
-#        features_dim = self.features_extractor._features_dim
-#        self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space))
+    def _build_mlp_extractor(self) -> None:
+        features_dim = self.features_extractor._features_dim
+        self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space))
 
 
