@@ -39,6 +39,7 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
 
         stones = obs["stones"] + 60
         merged_tensor = th.cat([ obs["current_player_hand"], stones, th.flatten(obs["cards_played"], start_dim=1) ], dim=1).int()
+        merged_tensor = merged_tensor.to(self.embedding.weight.device)
         # Pad merged_tensor to features_dim
         #batch_size, current_dim = merged_tensor.shape
         #pad_size = int(self._features_dim / EMBEDDING_DIM) - current_dim
@@ -137,6 +138,6 @@ class CustomPolicy(MaskableMultiInputActorCriticPolicy):
     
     def _build_mlp_extractor(self) -> None:
         features_dim = self.features_extractor._features_dim
-        self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space))
+        self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space)).to(self.device)
 
 

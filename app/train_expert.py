@@ -1,21 +1,10 @@
-'''
-Contexte:
-- This python script train a PPO agent to play boardgame described in a gym environment.
-Instructions:
-- Change this python script to introduce a mixed training : learning from expert records, then perfect the training with PPO as done in the original script.
-- be creative and suggest some enhancement if it's usefull for the training.
-Usefull information:
-- The expert records will be passed as argument in the command line. The records will be stored in a list of trajectories, using the python lib "imitation".
-- The export records are just records from a standard human player, used for the agent to have a good bootstrap of the way to play, do not take them as the ultimate best moves.
-- The PPO uses a custom MLP policy, dependant on the game, and located in models directory.
-'''
 import os
-
 import argparse
 import time
 import logging
 import random
 import numpy as np
+import traceback
 
 from sb3_contrib import MaskablePPO as PPO1
 from stable_baselines3.common.env_util import make_vec_env
@@ -52,25 +41,22 @@ def load_expert_trajectories(env_name, env, logger):
     return transitions
 
 
-def train_behavioral_cloning(expert_transitions, env, params, logger, seed):
+def train_behavioral_cloning(expert_transitions, env, params, logger, seed, policy):
     """Train a policy using behavioral cloning on expert demonstrations."""
     if expert_transitions is None or len(expert_transitions) == 0:
         logger.warning("No expert transitions available, skipping behavioral cloning")
         return None
     
-    try:
-        # Get the custom policy class for this environment
-        policy_class = params.get('policy_class')
-        lr = params.get('lr', 3e-4)
-        
+    try:        
         # Create BC trainer with custom policy
         bc_trainer = bc.BC(
             observation_space=env.observation_space,
             action_space=env.action_space,
             demonstrations=expert_transitions,
             rng=np.random.default_rng(seed),
-            policy=policy_class(env.observation_space, env.action_space, lr_schedule=FloatSchedule(lr)),
-            batch_size=min(32, len(expert_transitions))  # Adjust batch size based on available transitions
+            policy=policy,
+            batch_size=min(32, len(expert_transitions)),  # Adjust batch size based on available transitions
+            device=params.get('device_str')
         )
         
         logger.info("Starting behavioral cloning training...")
@@ -83,6 +69,7 @@ def train_behavioral_cloning(expert_transitions, env, params, logger, seed):
         return bc_policy
     except Exception as e:
         logger.error(f"Behavioral cloning failed: {e}")
+        logger.error(traceback.format_exc())
         return None
 
 
@@ -118,7 +105,6 @@ def main(args):
 
     logger.info('Setting up the selfplay training environment opponents...')
     base_env = get_environment(args.env_name)
-    policy_class = get_network_arch(args.env_name)
     if args.reset:
         #build base model
         load_model(base_env(), 'base.zip', args.device)
@@ -126,7 +112,6 @@ def main(args):
     env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
                        env_kwargs=dict(opponent_type = args.opponent_type, logger = logger, device = args.device),
                        vec_env_cls=SubprocVecEnv)
-    #env = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device)
 
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
@@ -137,9 +122,9 @@ def main(args):
         , 'verbose':0
         , 'tensorboard_log':config.LOGDIR
         , 'device_str': str(args.device)
+        , 'device': str(args.device)
         , 'bc_epochs': args.bc_epochs
         , 'lr': args.lr
-        , 'policy_class': policy_class
     }
 
     time.sleep(5) # allow time for the base model to be saved out when the environment is created
@@ -149,24 +134,26 @@ def main(args):
     logger.info(f"Loading expert trajectories from {get_trajectory_path(args.env_name)}...")
     expert_trajectories = load_expert_trajectories(args.env_name, env, logger)
 
-    # Behavioral Cloning phase
-    bc_policy = None
-    if expert_trajectories is not None and len(expert_trajectories) > 0:
-        logger.info("Starting behavioral cloning phase...")
-        bc_policy = train_behavioral_cloning(expert_trajectories, env, params, logger, seed)
-
     # Initialize PPO model
     if args.reset or not os.path.exists(os.path.join(model_dir, 'best_model.zip')):
         logger.info('Loading the base PPO agent to train...')
         model = PPO1.load(os.path.join(model_dir, 'base.zip'), env, **params)
-        
-        # If we have a BC policy, use it to warm start the PPO model
-        if bc_policy is not None:
-            logger.info("Warm starting PPO model with behavioral cloning policy...")
-            model.policy.load_state_dict(bc_policy.state_dict())
     else:
         logger.info('Loading the best_model.zip PPO agent to continue training...')
         model = PPO1.load(os.path.join(model_dir, 'best_model.zip'), env, **params)
+
+    # Behavioral Cloning phase
+    if expert_trajectories is not None and len(expert_trajectories) > 0:
+        logger.info("Starting behavioral cloning phase...")
+        #temp test
+        bc_policy = train_behavioral_cloning(expert_trajectories, env, params, logger, seed, model.policy)
+        model.policy.load_state_dict(bc_policy.state_dict())
+
+        # If we have a BC policy, use it to warm start the PPO model
+        #if bc_policy is not None:
+        #    logger.info("Warm starting PPO model with behavioral cloning policy...")
+        #    model.policy.load_state_dict(bc_policy.state_dict())
+
 
     #Callbacks
     logger.info('Setting up the selfplay evaluation environment opponents...')
