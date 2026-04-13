@@ -11,7 +11,7 @@ def _action_play_card(stone_idx:int, play_callback, env: SchottenTottenEnv):
     if env.gui_hand_card_selected == None:
         ui.notify("Please select a card in your hand before choosing the stone")
     else:
-        play_callback([ env.gui_hand_card_selected, stone_idx])
+        play_callback(env.gui_hand_card_selected * NB_STONES + stone_idx)
 
 def _element_star():
     content = '''<svg viewBox="0 0 300 275" xmlns="http://www.w3.org/2000/svg" version="1.1">
@@ -48,7 +48,7 @@ class RenderWeb:
                         ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
                     if board.stones[i] == StonePosition.NEUTRAL:
                         with ui.element("div").style("width: 10vw; height:5vh; position: relative; background-color: grey"):
-                            if type(suggested_action) != None.__class__ and suggested_action[1] == i:
+                            if (type(suggested_action) != None.__class__) and (suggested_action % NB_STONES == i):
                                 _element_star().style("width: 10%; position: absolute; top: 0px; left: 0px;")
                     else:
                         ui.element("div").style("width: 10vw; height:5vh; border: 2px dashed grey;")
@@ -72,7 +72,7 @@ class RenderWeb:
             ui.query(f'#{card_toggle.html_id} > button').classes("gap-0").style("padding: 0 2vw 0 2vw;")
             for i, card in enumerate(env.board.players[env.current_player].hand):
                 with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1}) .q-btn__content'):
-                    add_star = type(suggested_action) != None.__class__ and suggested_action[0] == i
+                    add_star = (type(suggested_action) != None.__class__) and (suggested_action // NB_STONES == i)
                     self._get_card_element(card, add_star=add_star)
 
     def init_web(self, env: SchottenTottenEnv, callback = None):

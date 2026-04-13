@@ -28,7 +28,7 @@ class SchottenTottenEnv(GBEnv):
         })
 
         #Set up the action space
-        self.action_space = gym.spaces.MultiDiscrete([ MAX_CARDS_PER_PLAYER, NB_STONES ]) #First dimension is the position in hand of the card played, second dimension is the destination stone.
+        self.action_space = gym.spaces.Discrete(MAX_CARDS_PER_PLAYER * NB_STONES) #action = card_index_in_hand * NB_STONES + dest stone_index
 
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -96,16 +96,16 @@ class SchottenTottenEnv(GBEnv):
         """
         Returns a list of legal actions for the current player.
         """
-        mask_card = np.zeros((MAX_CARDS_PER_PLAYER,), dtype=bool)
-        mask_stone = np.zeros((NB_STONES,), dtype=bool)
+        action_masks = np.ones(self.action_space.n, dtype=bool)
         player = self.board.players[self.current_player]
         for hand_idx in range(MAX_CARDS_PER_PLAYER):
-            if hand_idx < len(player.hand):
-                mask_card[hand_idx] = True
+            if hand_idx >= len(player.hand):
+                action_masks[hand_idx*NB_STONES : (hand_idx+1)*NB_STONES] = False
         for stone_idx in range(NB_STONES):
-            if len(self.board.played_cards[stone_idx][self.current_player]) < 3:
-                mask_stone[stone_idx] = True
-        return np.concatenate([mask_card, mask_stone])
+            if len(self.board.played_cards[stone_idx][self.current_player]) == 3:
+                for hand_idx in range(MAX_CARDS_PER_PLAYER):
+                    action_masks[hand_idx*NB_STONES + stone_idx] = False
+        return action_masks
     
     def score_stone(self, cards: Deck) -> int:
         """
@@ -168,22 +168,19 @@ class SchottenTottenEnv(GBEnv):
                     return (True, False)
         return (False, False)
 
-    def step(self, action: List[int]|int):
+    def step(self, action: int):
         terminated = False
         reward = [0., 0.]
 
         # check move legality
-        if (type(action) != int) and (self.action_masks()[action[0]] == False or self.action_masks()[action[1] + MAX_CARDS_PER_PLAYER] == False):
+        if self.action_masks()[action] == False:
             logger.error(self.observation)
             logger.error(self.compute_score(self.current_player))
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
         
-        #initial score of the current player
-        init_score = self.compute_score(self.current_player)
         #Play card on stone
-        if (type(action) != int):
-            card = self.board.players[self.current_player].hand.draw_one_by_index(action[0])
-            self.board.played_cards[action[1]][self.current_player].add([card])
+        card = self.board.players[self.current_player].hand.draw_one_by_index(action // NB_STONES)
+        self.board.played_cards[action % NB_STONES][self.current_player].add([card])
         #Check if current player can claim a stone
         if self.current_player != -1:
             for stone_idx in range(NB_STONES):

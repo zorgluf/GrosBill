@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 from gymnasium import spaces
 import torch as th
 from torch import Tensor
-from sb3_contrib.common.maskable.policies import MaskableMultiInputActorCriticPolicy
+from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 EMBEDDING_DIM = 16
@@ -115,7 +115,7 @@ class CustomNetwork(th.nn.Module):
         return value_net
 
 
-class CustomPolicy(MaskableMultiInputActorCriticPolicy):
+class CustomPolicy(MaskableActorCriticPolicy):
     def __init__(
         self,
         observation_space: spaces.Space,

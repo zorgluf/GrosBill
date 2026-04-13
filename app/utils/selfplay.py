@@ -53,7 +53,7 @@ def selfplay_wrapper(env: GBEnv):
             self.agents = [self.opponent_agent] * self.n_players
             self.agents[self.agent_player_num] = None
 
-        def reset(self, seed = None):
+        def reset(self, seed = None, **kwargs):
             _, info = super(SelfPlayEnv, self).reset(seed = seed)
             self.setup_opponents()
 
