@@ -267,4 +267,35 @@ class SchottenTottenEnv(GBEnv):
 
     def render(self, **kwargs):
         super().render(**kwargs)
-        self.render_web.render_web(self, **kwargs)
+        if self.render_mode == "human":
+            # Print played cards for opponent
+            print("Opponent's played cards:")
+            for stone_idx in range(NB_STONES):
+                opponent_cards = self.board.played_cards[stone_idx][self.current_opponent]
+                print(f"  Stone {stone_idx}: {[f"{card.color}/{card.value}" for card in opponent_cards]}")
+            
+            # Print stone positions
+            print("\nStone positions:")
+            stone_positions = []
+            for stone_idx, position in enumerate(self.board.stones):
+                if position == StonePosition.PLAYER1:
+                    pos_str = "Player 1"
+                elif position == StonePosition.PLAYER2:
+                    pos_str = "Player 2"
+                else:
+                    pos_str = "Neutral"
+                stone_positions.append(f"{pos_str}")
+            print("  " + " | ".join(stone_positions))
+            
+            # Print played cards for current player
+            print("\nCurrent player's played cards:")
+            for stone_idx in range(NB_STONES):
+                player_cards = self.board.played_cards[stone_idx][self.current_player]
+                print(f"  Stone {stone_idx}: {[f"{card.color}/{card.value}" for card in player_cards]}")
+            
+            # Print current player hand
+            print("\nCurrent player's hand:")
+            current_hand = self.board.players[self.current_player].hand
+            print(f"  {[f"{card.color}/{card.value}" for card in current_hand]}")
+        else:
+            self.render_web.render_web(self, **kwargs)

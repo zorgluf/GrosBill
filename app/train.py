@@ -56,7 +56,6 @@ def main(args):
     env = make_vec_env(selfplay_wrapper(base_env), n_envs=args.n_envs, 
                        env_kwargs=dict(opponent_type = args.opponent_type, logger = logger, device = args.device),
                        vec_env_cls=SubprocVecEnv)
-    #env = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device)
 
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
