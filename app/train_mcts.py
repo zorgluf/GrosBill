@@ -6,11 +6,13 @@ import logging
 import random
 import gymnasium as gym
 import numpy as np
+import torch
 
 from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.buffers import MaskableDictRolloutBuffer, MaskableRolloutBuffer
+from stable_baselines3.common.utils import obs_as_tensor, set_random_seed
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
-from stable_baselines3.common.utils import set_random_seed
 
 from utils.callbacks import SelfPlayCallback
 from utils.files import reset_logs, reset_models, load_model
@@ -23,32 +25,96 @@ from gymcts.gymcts_neural_agent import GymctsNeuralAgent
 from gymcts.gymcts_deepcopy_wrapper import DeepCopyMCTSGymEnvWrapper
 from gymcts.logger import log
 
-def generate_trajectories(env: DeepCopyMCTSGymEnvWrapper, agent: GymctsNeuralAgent, num_episodes=100, logger = logging.getLogger(__name__)):
-    states, actions, rewards = [], [], []
-    for i in range(num_episodes):
-        logger.info(f"Generate trajectories {i}/{num_episodes}")
-        agent.reset()
-        state = env.reset()
-        done = False
-        j = 0
-        while not done:
-            j += 1
-            logger.info(f"{j}")
-            # MCTS choisit une action
-            action, _ = agent.perform_mcts_step()
-            # Enregistre l'état et l'action
-            states.append(state)
-            actions.append(action)
-            # Applique l'action
-            next_state, reward, terminated, truncated, _ = env.step(action)
-            rewards.append(reward)
-            done = terminated or truncated
-            state = next_state
-    return states, actions, rewards
+def generate_trajectories(agent: GymctsNeuralAgent, logger = logging.getLogger(__name__)):
+    states, actions, action_masks, rewards, dones = [], [], [], [], []
+    done = False
+    state = agent.search_root_node._obs
+    next_node = agent.search_root_node
+    while not done:
+        # MCTS choisit une action
+        action_masks.append(next_node.state.env.env.action_masks())
+        action, next_node = agent.perform_mcts_step()
+        # Enregistre l'état et l'action
+        states.append(state)
+        actions.append(action)
+        reward = next_node.state._step_tuple[1]
+        rewards.append(reward)
+        dones.append(False)
+        done = next_node.terminal
+        state = next_node._obs
+    if dones:  # Marque la dernière step comme done
+        dones[-1] = True
+    return states, actions, action_masks, rewards, dones
+
+def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args, env, logger):
+    """Entraîne PPO offline sur des trajectoires pré-collectées sans rollouts."""
+
+    # Crée un buffer dédié pour l'entraînement offline
+    if isinstance(env.observation_space, gym.spaces.Dict):
+        offline_buffer = MaskableDictRolloutBuffer(
+            buffer_size=len(states),
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=model.device,
+            gamma=args.gamma,
+            gae_lambda=0.95
+        )
+        states = [ { k:np.expand_dims(np.array(v),axis=0) for k,v in state.items()} for state in states ]
+    else:
+        offline_buffer = MaskableRolloutBuffer(
+            buffer_size=len(states),
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=model.device,
+            gamma=args.gamma,
+            gae_lambda=0.95
+        )
+
+    # Remplit le buffer
+    offline_buffer.reset()
+    model.policy.set_training_mode(False)
+    for i, obs in enumerate(states):
+        # Prédit les valeurs et log_probs avec le modèle actuel (old_log_probs)
+        with torch.no_grad():
+            obs_tensor = obs_as_tensor(obs, model.device)
+            _, value, log_prob = model.policy(obs_tensor, action_masks=action_masks[i])
+        offline_buffer.add(
+            obs=obs,
+            action=np.array([actions[i]]),
+            reward=rewards[i],
+            episode_start=dones[i],
+            value=value,
+            log_prob=log_prob,
+            action_masks=action_masks[i]
+        )
+        offline_buffer.compute_returns_and_advantage(last_values=value, dones=np.array([dones[i]]))
+    model.policy.set_training_mode(True)
+
+    # Échange temporairement le buffer du modèle
+    original_buffer = model.rollout_buffer
+    model.rollout_buffer = offline_buffer
+
+    # Entraîne sur ces données sans rollouts
+    model.policy.set_training_mode(True)
+    model._setup_learn(
+        1e10,
+        None,
+        True,
+        "MCTSlearn",
+        False,
+    )
+    for i in range(args.n_epochs):
+        logger.info(f"Train on MCTS data (epoch {i}/{args.n_epochs})")
+        model.train()
+    model.policy.set_training_mode(False)
+
+    # Restaure le buffer original
+    model.rollout_buffer = original_buffer
 
 def main(args):
    
     log.setLevel(20)
+    #log.setLevel(10) #for debug
 
     model_dir = os.path.join(config.MODELDIR, args.env_name)
     try:
@@ -123,26 +189,35 @@ def main(args):
     for iteration in range(args.nb_improve_loop): 
         logger.info(f"Iteration {iteration + 1}/{args.nb_improve_loop}")
 
-        # 1. Créez l'agent MCTS avec la politique SB3 actuelle
-        env = DeepCopyMCTSGymEnvWrapper(env_self, action_mask_fn=lambda env: env.action_masks())
-        agent = GymctsNeuralAgent(
-            env=env,
-            render_tree_after_step=False,
-            render_tree_max_depth=3,
-            exclude_unvisited_nodes_from_render=False,
-            number_of_simulations_per_step=10,
-            # clear_mcts_tree_after_step = False,
-            model=model
-        )
+        # 1. Créez l'agent MCTS avec la politique SB3 actuelle et générer des trajectoires
+        states, actions, action_masks, rewards, dones = [], [], [], [], []
+        for i in range(args.nb_episode_gen):
+            logger.info(f"Generate trajectories {i}/{args.nb_episode_gen}")
+            env_self.reset()
+            env = DeepCopyMCTSGymEnvWrapper(env_self, action_mask_fn=lambda env: env.env.action_masks())
+            agent = GymctsNeuralAgent(
+                env=env,
+                render_tree_after_step=False,
+                render_tree_max_depth=3,
+                exclude_unvisited_nodes_from_render=False,
+                number_of_simulations_per_step=args.nb_sim_mcts,
+                clear_mcts_tree_after_step = True,
+                model=model
+            )
+            logger.info(f"Generate trajectories")
+            ep_states, ep_actions, ep_action_masks, ep_rewards, ep_dones = generate_trajectories(agent, logger=logger)
+            states += ep_states
+            actions += ep_actions
+            action_masks += ep_action_masks
+            rewards += ep_rewards
+            dones += ep_dones
 
-        # 2. Générez des trajectoires
-        logger.info(f"Generate trajectories")
-        states, actions, rewards = generate_trajectories(env, agent, num_episodes=args.nb_episode_gen)
+        # Entraîne le modèle PPO uniquement sur les trajectoires MCTS générées
+        if states:
+            train_offline_ppo(model, states, actions, action_masks, rewards, dones, args, env_self, logger)
 
-        # 3. Réentraînez le modèle SB3
-        # (Ici, on suppose que les trajectoires sont utilisées via l'entraînement continu de SB3)
-        # Pour SB3, il suffit de continuer l'entraînement avec model.learn()
-        logger.info(f"Train policy")
+        # 3. Réentraînez le modèle SB3 en mode standard et standalone
+        logger.info(f"Train policy on standard on-policy rollout")
         model.learn(total_timesteps=args.total_timesteps, callback=[eval_callback], reset_num_timesteps = False, tb_log_name=log_name, progress_bar=False)
 
 def cli() -> None:
@@ -178,7 +253,7 @@ def cli() -> None:
             , help="How many timesteps should each actor contribute before the agent is evaluated. Default value is fine for most games.")
   parser.add_argument("--n_eval_episodes", "-ne",  type = int, default = 100
             , help="How many episodes should each actor contirbute to the evaluation of the agent. Default value is fine for most games.")
-  parser.add_argument("--threshold", "-t",  type = float, default = 0.5
+  parser.add_argument("--threshold", "-t",  type = float, default = 0.8
             , help="What score/reward must the agent achieve during evaluation to 'beat' the previous version and generate a new best model. Choose carefully, depending on the scoring scale of the game.")
   parser.add_argument("--gamma", "-g",  type = float, default = 0.99
             , help="The value of gamma in PPO (0.99: long term reward, 0.95: short term reward)")
@@ -200,6 +275,8 @@ def cli() -> None:
             , help="The nubmer of episode to generate with mcts explorations.")
   parser.add_argument("--nb_improve_loop", "-niloop",  type = int, default = 10
             , help="The number of improvement loop (mcts search + PPO training of model).")
+  parser.add_argument("--nb_sim_mcts", "-simmcts",  type = int, default = 10
+            , help="The number of MCTS simulations per step.")
 
   parser.add_argument("--device", "-dev",  type = str, default = "cpu"
             , help="The device to use")

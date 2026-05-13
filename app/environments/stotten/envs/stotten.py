@@ -2,7 +2,7 @@ import gymnasium as gym
 import numpy as np
 
 import logging as logger
-from typing import List
+from typing import List, Tuple
 
 from .classes import *
 from .render_web import RenderWeb
@@ -129,7 +129,7 @@ class SchottenTottenEnv(GBEnv):
         return card_sum
         
     
-    def can_claim_stone(self, stone_idx) -> bool:
+    def can_claim_stone(self, stone_idx) -> Tuple[bool,bool]:
         """
         Check if the current player can claim a stone.
         Check also if the opponent can claim it in case of 3 cards on each side.
@@ -147,7 +147,7 @@ class SchottenTottenEnv(GBEnv):
                 else:
                     if score_stone_current == score_stone_opponent:
                         #special case : the first one to play the stone wins, so it is the opponent that can claim the stone
-                        self.board.stones[stone_idx] = StonePosition.PLAYER2 if self.current_player == PlayerId.PLAYER1.value else StonePosition.PLAYER1
+                        return (False, True)
                     return (False, True)
             else:
                 if len(self.board.played_cards[stone_idx][self.current_opponent]) == 2:
@@ -163,7 +163,7 @@ class SchottenTottenEnv(GBEnv):
                         dummy_stone_cards.add(self.board.played_cards[stone_idx][self.current_opponent])
                         dummy_stone_cards.add([card])
                         score_stone_opponent = self.score_stone(dummy_stone_cards)
-                        if score_stone_current <= score_stone_opponent:
+                        if score_stone_current < score_stone_opponent:
                             return (False, False)
                     return (True, False)
         return (False, False)
@@ -184,7 +184,8 @@ class SchottenTottenEnv(GBEnv):
         #Check if current player can claim a stone
         if self.current_player != -1:
             for stone_idx in range(NB_STONES):
-                if self.can_claim_stone(stone_idx)[0]:
+                current_claim, opponent_claim = self.can_claim_stone(stone_idx)
+                if current_claim:
                     if self.current_player == PlayerId.PLAYER1.value:
                         self.board.stones[stone_idx] = StonePosition.PLAYER1
                         if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER1:
@@ -198,18 +199,21 @@ class SchottenTottenEnv(GBEnv):
                         if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER2:
                             reward[self.current_player] += 1.0
                     reward[self.current_player] += 1.0
-                if self.can_claim_stone(stone_idx)[1]:
+                if opponent_claim:
                     if self.current_opponent == PlayerId.PLAYER1.value:
+                        self.board.stones[stone_idx] = StonePosition.PLAYER1
                         if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER1:
                             reward[self.current_player] -= 1.0
                         if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER1:
                             reward[self.current_player] -= 1.0
                     else:
+                        self.board.stones[stone_idx] = StonePosition.PLAYER2
                         if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER2:
                             reward[self.current_player] -= 1.0
                         if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER2:
                             reward[self.current_player] -= 1.0
                     reward[self.current_player] -= 1.0
+                    reward[self.current_opponent] += 1.0
         #draw a card from the main deck
         if len(self.board.main_deck) > 0:
             card = self.board.main_deck.draw(1)
@@ -222,6 +226,9 @@ class SchottenTottenEnv(GBEnv):
         reward[self.current_player] = reward[self.current_player] / WIN_SCORE
         #check if we are done
         after_score_opponent = self.compute_score(self.current_opponent)
+        if after_score_opponent >= WIN_SCORE:
+            reward[self.current_opponent] = WIN_SCORE
+        reward[self.current_opponent] = reward[self.current_opponent] / WIN_SCORE
         if (after_score >= WIN_SCORE) or (after_score_opponent >= WIN_SCORE):
             self.winner_player = self.current_player if after_score >= after_score_opponent else self.current_opponent
             terminated = True
