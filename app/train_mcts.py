@@ -46,7 +46,7 @@ def generate_trajectories(agent: GymctsNeuralAgent, logger = logging.getLogger(_
         dones[-1] = True
     return states, actions, action_masks, rewards, dones
 
-def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args, env, logger):
+def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args, env, logger, callbacks):
     """Entraîne PPO offline sur des trajectoires pré-collectées sans rollouts."""
 
     # Crée un buffer dédié pour l'entraînement offline
@@ -73,6 +73,7 @@ def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args
     # Remplit le buffer
     offline_buffer.reset()
     model.policy.set_training_mode(False)
+    num_timesteps = len(states)
     for i, obs in enumerate(states):
         # Prédit les valeurs et log_probs avec le modèle actuel (old_log_probs)
         with torch.no_grad():
@@ -95,17 +96,22 @@ def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args
     model.rollout_buffer = offline_buffer
 
     # Entraîne sur ces données sans rollouts
-    model.policy.set_training_mode(True)
-    model._setup_learn(
+    _, callback = model._setup_learn(
         1e10,
-        None,
-        True,
+        callbacks,
+        False,
         "MCTSlearn",
         False,
     )
+    callback.on_training_start(locals(), globals())
     for i in range(args.n_epochs):
         logger.info(f"Train on MCTS data (epoch {i}/{args.n_epochs})")
         model.train()
+        model.num_timesteps += num_timesteps
+        model.dump_logs(i)
+        for _ in range(num_timesteps):
+            callback.on_step()
+    callback.on_training_end()
     model.policy.set_training_mode(False)
 
     # Restaure le buffer original
@@ -214,11 +220,11 @@ def main(args):
 
         # Entraîne le modèle PPO uniquement sur les trajectoires MCTS générées
         if states:
-            train_offline_ppo(model, states, actions, action_masks, rewards, dones, args, env_self, logger)
+            train_offline_ppo(model, states, actions, action_masks, rewards, dones, args, env_self, logger, callbacks=[eval_callback])
 
         # 3. Réentraînez le modèle SB3 en mode standard et standalone
-        logger.info(f"Train policy on standard on-policy rollout")
-        model.learn(total_timesteps=args.total_timesteps, callback=[eval_callback], reset_num_timesteps = False, tb_log_name=log_name, progress_bar=False)
+        #logger.info(f"Train policy on standard on-policy rollout")
+        #model.learn(total_timesteps=args.total_timesteps, callback=[eval_callback], reset_num_timesteps = False, tb_log_name=log_name, progress_bar=False)
 
 def cli() -> None:
   """Handles argument extraction from CLI and passing to main().
@@ -253,7 +259,7 @@ def cli() -> None:
             , help="How many timesteps should each actor contribute before the agent is evaluated. Default value is fine for most games.")
   parser.add_argument("--n_eval_episodes", "-ne",  type = int, default = 100
             , help="How many episodes should each actor contirbute to the evaluation of the agent. Default value is fine for most games.")
-  parser.add_argument("--threshold", "-t",  type = float, default = 0.8
+  parser.add_argument("--threshold", "-t",  type = float, default = 0.85
             , help="What score/reward must the agent achieve during evaluation to 'beat' the previous version and generate a new best model. Choose carefully, depending on the scoring scale of the game.")
   parser.add_argument("--gamma", "-g",  type = float, default = 0.99
             , help="The value of gamma in PPO (0.99: long term reward, 0.95: short term reward)")
