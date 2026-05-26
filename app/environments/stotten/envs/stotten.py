@@ -109,22 +109,25 @@ class SchottenTottenEnv(GBEnv):
     
     def score_stone(self, cards: Deck) -> int:
         """
-        Compute the score of the played cards on a stone. Must have 3 cards in deck
+        Compute the score of the played cards on a stone.
         """
         card_sum = sum([card.value for card in cards])
-        #three of a kind
+        nb = len(cards)
+        if nb == 0:
+            return 0
+        #same value
         if len(set([card.value for card in cards])) == 1:
-            return 300 + card_sum
+            return (300 * (nb - 1) / 2) + card_sum
         if len(set([card.color for card in cards])) == 1:
             if np.all(np.diff(np.sort([card.value for card in cards])) == 1):
                 #color run
-                return 400 + card_sum
+                return (400 * (nb - 1) / 2) + card_sum
             else:
                 #color
-                return 200 + card_sum
+                return (200 * (nb - 1) / 2) + card_sum
         if np.all(np.diff(np.sort([card.value for card in cards])) == 1):
             #run
-            return 100 + card_sum
+            return (100 * (nb - 1) / 2) + card_sum
         #sum
         return card_sum
         
@@ -171,7 +174,8 @@ class SchottenTottenEnv(GBEnv):
     def step(self, action: int):
         terminated = False
         reward = [0., 0.]
-
+        current_before_score = self.compute_score(self.current_player)
+        opponent_before_score = self.compute_score(self.current_opponent)
         # check move legality
         if self.action_masks()[action] == False:
             logger.error(self.observation)
@@ -188,49 +192,36 @@ class SchottenTottenEnv(GBEnv):
                 if current_claim:
                     if self.current_player == PlayerId.PLAYER1.value:
                         self.board.stones[stone_idx] = StonePosition.PLAYER1
-                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER1:
-                            reward[self.current_player] += 1.0
-                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER1:
-                            reward[self.current_player] += 1.0
                     else:
                         self.board.stones[stone_idx] = StonePosition.PLAYER2
-                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER2:
-                            reward[self.current_player] += 1.0
-                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER2:
-                            reward[self.current_player] += 1.0
-                    reward[self.current_player] += 1.0
                 if opponent_claim:
                     if self.current_opponent == PlayerId.PLAYER1.value:
                         self.board.stones[stone_idx] = StonePosition.PLAYER1
-                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER1:
-                            reward[self.current_player] -= 1.0
-                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER1:
-                            reward[self.current_player] -= 1.0
                     else:
                         self.board.stones[stone_idx] = StonePosition.PLAYER2
-                        if stone_idx > 0 and self.board.stones[stone_idx - 1] == StonePosition.PLAYER2:
-                            reward[self.current_player] -= 1.0
-                        if stone_idx < NB_STONES - 1 and self.board.stones[stone_idx + 1] == StonePosition.PLAYER2:
-                            reward[self.current_player] -= 1.0
-                    reward[self.current_player] -= 1.0
-                    reward[self.current_opponent] += 1.0
         #draw a card from the main deck
         if len(self.board.main_deck) > 0:
             card = self.board.main_deck.draw(1)
             self.board.players[self.current_player].hand.add(card)
-        #check if we win
-        after_score = self.compute_score(self.current_player)
-        if after_score >= WIN_SCORE:
+        #compute reward for current player
+        current_after_score = self.compute_score(self.current_player)
+        if current_after_score >= WIN_SCORE:
             reward[self.current_player] = WIN_SCORE
+        else:
+            reward[self.current_player] += current_after_score - current_before_score
         #scale reward into [0;1]
         reward[self.current_player] = reward[self.current_player] / WIN_SCORE
-        #check if we are done
-        after_score_opponent = self.compute_score(self.current_opponent)
-        if after_score_opponent >= WIN_SCORE:
+        #compute reward for opponent player
+        opponent_after_score = self.compute_score(self.current_opponent)
+        if opponent_after_score >= WIN_SCORE:
             reward[self.current_opponent] = WIN_SCORE
+        else:
+            reward[self.current_opponent] += opponent_after_score - opponent_before_score
+        #scale reward into [0;1]
         reward[self.current_opponent] = reward[self.current_opponent] / WIN_SCORE
-        if (after_score >= WIN_SCORE) or (after_score_opponent >= WIN_SCORE):
-            self.winner_player = self.current_player if after_score >= after_score_opponent else self.current_opponent
+        #check if we are done
+        if (current_after_score >= WIN_SCORE) or (opponent_after_score >= WIN_SCORE):
+            self.winner_player = self.current_player if current_after_score >= opponent_after_score else self.current_opponent
             terminated = True
             self.done = True
         else:
@@ -265,8 +256,12 @@ class SchottenTottenEnv(GBEnv):
                             return WIN_SCORE
                         continue
             cont_score = 0
+        # add virtual card values
+        virtual_card_score = 0
+        for stone_idx in range(NB_STONES):
+            virtual_card_score += float(self.score_stone(self.board.played_cards[stone_idx][player])) / 1000
 
-        return score + stones
+        return score + stones + virtual_card_score
 
     def nicegui_page(self):
         self.render_web = RenderWeb()

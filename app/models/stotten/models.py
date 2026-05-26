@@ -30,7 +30,7 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
         # Pad features_dim to be a multiple of NHEAD
         if features_dim % NHEAD != 0:
             features_dim += NHEAD - (features_dim % NHEAD)
-        #features_dim = features_dim * EMBEDDING_DIM
+        features_dim = features_dim * EMBEDDING_DIM
         super().__init__(observation_space, features_dim=features_dim)
 
         self.embedding = th.nn.Embedding(num_embeddings=self.NUM_EMBEDDINGS, embedding_dim=EMBEDDING_DIM)
@@ -46,8 +46,8 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
         #padding = th.zeros((batch_size, pad_size), dtype=merged_tensor.dtype, device=merged_tensor.device)
         #merged_tensor = th.cat([merged_tensor, padding], dim=1)
         
-        return self.embedding(merged_tensor)
-        #return th.flatten(self.embedding(merged_tensor), start_dim=1)
+        #return self.embedding(merged_tensor)
+        return th.flatten(self.embedding(merged_tensor), start_dim=1)
     
 class CustomNetwork(th.nn.Module):
     """
@@ -131,13 +131,13 @@ class CustomPolicy(MaskableActorCriticPolicy):
             action_space,
             lr_schedule,
             features_extractor_class=CustomFeatureExtractor,
-            #net_arch=dict(pi=[ 500, 300, 100 ],vf=[500, 300, 100]),
+            net_arch=dict(pi=[ 500, 300, 100 ],vf=[500, 300, 100]),
             *args,
             **kwargs,
         )
     
-    def _build_mlp_extractor(self) -> None:
-        features_dim = self.features_extractor._features_dim
-        self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space)).to(self.device)
+    #def _build_mlp_extractor(self) -> None:
+    #    features_dim = self.features_extractor._features_dim
+    #    self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space)).to(self.device)
 
 
