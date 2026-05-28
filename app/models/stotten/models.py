@@ -49,6 +49,19 @@ class CustomFeatureExtractor(BaseFeaturesExtractor):
         #return self.embedding(merged_tensor)
         return th.flatten(self.embedding(merged_tensor), start_dim=1)
     
+class CustomFeatureExtractorSimple(BaseFeaturesExtractor):
+
+    def __init__(self, observation_space: spaces.Dict):
+        #feature dim
+        features_dim = spaces.flatdim(observation_space)
+        super().__init__(observation_space, features_dim=features_dim)
+
+    def forward(self, obs) -> th.Tensor:
+
+        stones = obs["stones"] / 2
+        merged_tensor = th.cat([ obs["current_player_hand"] / 10, stones, th.flatten(obs["cards_played"] / 10, start_dim=1) ], dim=1)
+        return merged_tensor
+    
 class CustomNetwork(th.nn.Module):
     """
     Custom network for policy and value function using a two-layer Transformer encoder.
@@ -124,13 +137,11 @@ class CustomPolicy(MaskableActorCriticPolicy):
         *args,
         **kwargs,
     ):
-        # Disable orthogonal initialization (to test if still useful)
-        # kwargs["ortho_init"] = False
         super().__init__(
             observation_space,
             action_space,
             lr_schedule,
-            features_extractor_class=CustomFeatureExtractor,
+            features_extractor_class=CustomFeatureExtractorSimple,
             net_arch=dict(pi=[ 500, 300, 100 ],vf=[500, 300, 100]),
             *args,
             **kwargs,
