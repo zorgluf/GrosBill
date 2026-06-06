@@ -115,7 +115,7 @@ def main(args):
 
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
-        , 'ent_coeff':args.entcoeff
+        , 'ent_coef':args.entcoeff
         , 'n_epochs':args.n_epochs
         , 'n_steps':args.n_steps
         , 'batch_size':args.batch_size

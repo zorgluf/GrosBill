@@ -54,7 +54,7 @@ class SelfPlayCallback(MaskableEvalCallback):
   def _on_training_start(self) -> None:
     hparam_dict = {
         "gamma": self.model.gamma,
-        "ent_coeff": self.model.ent_coeff,
+        "ent_coef": self.model.ent_coef,
         "n_epochs": self.model.n_epochs,
         "clip_range": self.model.clip_range(0),
         "batch_size": self.model.batch_size,

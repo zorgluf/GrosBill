@@ -11,7 +11,11 @@ def _action_play_card(stone_idx:int, play_callback, env: SchottenTottenEnv):
     if env.gui_hand_card_selected == None:
         ui.notify("Please select a card in your hand before choosing the stone")
     else:
-        play_callback(env.gui_hand_card_selected * NB_STONES + stone_idx)
+        # gui_hand_card_selected is the position of the card in the displayed hand;
+        # the action space is identity-based, so translate position -> card identity.
+        hand = list(env.board.players[env.current_player].hand)
+        card = hand[env.gui_hand_card_selected]
+        play_callback(card.identity * NB_STONES + stone_idx)
 
 def _element_star():
     content = '''<svg viewBox="0 0 300 275" xmlns="http://www.w3.org/2000/svg" version="1.1">
@@ -72,7 +76,8 @@ class RenderWeb:
             ui.query(f'#{card_toggle.html_id} > button').classes("gap-0").style("padding: 0 2vw 0 2vw;")
             for i, card in enumerate(env.board.players[env.current_player].hand):
                 with ui.teleport(f'#{card_toggle.html_id} > button:nth-child({i+1}) .q-btn__content'):
-                    add_star = (type(suggested_action) != None.__class__) and (suggested_action // NB_STONES == i)
+                    # suggested_action // NB_STONES is now a card identity, not a hand position
+                    add_star = (type(suggested_action) != None.__class__) and (suggested_action // NB_STONES == card.identity)
                     self._get_card_element(card, add_star=add_star)
 
     def init_web(self, env: SchottenTottenEnv, callback = None):

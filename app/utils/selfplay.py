@@ -105,8 +105,10 @@ def selfplay_wrapper(env: GBEnv):
                 if package[0] is not None:
                     observation, reward, done, truncated, info = package
                     agent_reward += reward
-            else:
-                _, info = self.reset()  # reset for next game (reset not called if wrapped in vec env)
+            # On `done` we return the genuine terminal observation and let the surrounding
+            # VecEnv (SubprocVecEnv / DummyVecEnv) perform the reset and store
+            # info["terminal_observation"]. Resetting here caused a double-reset and
+            # returned the next episode's first observation as if it were terminal.
 
             return observation, agent_reward, done, truncated, info
 

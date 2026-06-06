@@ -1,131 +1,58 @@
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable
 
+import numpy as np
 from gymnasium import spaces
 import torch as th
-from torch import Tensor
+import torch.nn.functional as F
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-EMBEDDING_DIM = 16
-NHEAD = 1
+CARD_EMBEDDING_DIM = 8
+N_STONE_STATES = 3  # 0 = mine, 1 = neutral, 2 = opponent
 
-
-def init_weights(module):
-    if isinstance(module, th.nn.Linear):
-        th.nn.init.xavier_uniform_(module.weight)
-        if module.bias is not None:
-            th.nn.init.constant_(module.bias, 0)
-    elif isinstance(module, th.nn.LayerNorm):
-        th.nn.init.constant_(module.weight, 1.0)
-        th.nn.init.constant_(module.bias, 0)
 
 class CustomFeatureExtractor(BaseFeaturesExtractor):
-
-    NUM_EMBEDDINGS = 64 # 10*6 for cards + 3 for stone positions
-    #NUM_EMBEDDINGS = 63 # 10*6 for cards + 3 for stone positions
-
-    def __init__(self, observation_space: spaces.Dict):
-        #feature dim
-        features_dim = spaces.flatdim(observation_space)
-        # Pad features_dim to be a multiple of NHEAD
-        if features_dim % NHEAD != 0:
-            features_dim += NHEAD - (features_dim % NHEAD)
-        features_dim = features_dim * EMBEDDING_DIM
-        super().__init__(observation_space, features_dim=features_dim)
-
-        self.embedding = th.nn.Embedding(num_embeddings=self.NUM_EMBEDDINGS, embedding_dim=EMBEDDING_DIM)
-
-    def forward(self, obs) -> th.Tensor:
-
-        stones = obs["stones"] + 60
-        merged_tensor = th.cat([ obs["current_player_hand"], stones, th.flatten(obs["cards_played"], start_dim=1) ], dim=1).int()
-        merged_tensor = merged_tensor.to(self.embedding.weight.device)
-        # Pad merged_tensor to features_dim
-        #batch_size, current_dim = merged_tensor.shape
-        #pad_size = int(self._features_dim / EMBEDDING_DIM) - current_dim
-        #padding = th.zeros((batch_size, pad_size), dtype=merged_tensor.dtype, device=merged_tensor.device)
-        #merged_tensor = th.cat([merged_tensor, padding], dim=1)
-        
-        #return self.embedding(merged_tensor)
-        return th.flatten(self.embedding(merged_tensor), start_dim=1)
-    
-class CustomFeatureExtractorSimple(BaseFeaturesExtractor):
-
-    def __init__(self, observation_space: spaces.Dict):
-        #feature dim
-        features_dim = spaces.flatdim(observation_space)
-        super().__init__(observation_space, features_dim=features_dim)
-
-    def forward(self, obs) -> th.Tensor:
-
-        stones = obs["stones"] / 2
-        merged_tensor = th.cat([ obs["current_player_hand"] / 10, stones, th.flatten(obs["cards_played"] / 10, start_dim=1) ], dim=1)
-        return merged_tensor
-    
-class CustomNetwork(th.nn.Module):
     """
-    Custom network for policy and value function using a two-layer Transformer encoder.
-    It receives as input the features extracted by the features extractor.
+    Embedding-based extractor for the (stationary) Schotten Totten observation.
 
-    :param input_feature_dim: dimension of the features extracted with the features_extractor
-    :param last_layer_dim_pi: (int) number of units for the last layer of the policy network
-    :param last_layer_dim_vf: (int) number of units for the last layer of the value network
+    - current_player_hand : MultiBinary(NB_CARDS) presence vector -> used as-is (already 0/1).
+    - stones              : Box(NB_STONES,) in {0,1,2}            -> one-hot.
+    - cards_played        : Box(NB_STONES, 2, 3) identity tokens   -> learned embedding.
+                            (0 = empty slot, 1..NB_CARDS = card identity + 1)
+
+    Cards are treated as categorical identities (via an embedding / one-hot), NOT as a
+    single packed scalar, so the network can actually reason about colors, runs and sets.
     """
 
-    def __init__(
-        self,
-        input_feature_dim: int,
-        last_layer_dim_pi: int = 64,
-        last_layer_dim_vf: int = 1,
-        dim_feedforward: int = 512,
-    ):
-        super().__init__()
+    def __init__(self, observation_space: spaces.Dict):
+        hand_space = observation_space["current_player_hand"]
+        self.hand_dim = int(hand_space.shape[0])
 
-        self.latent_dim_pi = last_layer_dim_pi
-        self.latent_dim_vf = last_layer_dim_vf
+        stones_space = observation_space["stones"]
+        self.n_stones = int(stones_space.shape[0])
 
-        # Transformer expects input shape (seq_len, batch, embed_dim)
-        # We'll treat the features as a sequence of length 1
-        encoder_layer = th.nn.TransformerEncoderLayer(
-            d_model=EMBEDDING_DIM,
-            nhead=NHEAD,
-            dim_feedforward=dim_feedforward,
-            batch_first=True,
-            activation="relu"
+        played_space = observation_space["cards_played"]
+        self.n_played_slots = int(np.prod(played_space.shape))
+        self.num_card_tokens = int(played_space.high.max()) + 1  # NB_CARDS + 1
+
+        features_dim = (
+            self.hand_dim
+            + self.n_stones * N_STONE_STATES
+            + self.n_played_slots * CARD_EMBEDDING_DIM
         )
-        self.transformer_encoder = th.nn.TransformerEncoder(encoder_layer, num_layers=4)
-        # Appliquer l'initialisation à chaque couche
-        for layer in self.transformer_encoder.layers:
-            layer.apply(init_weights)
+        super().__init__(observation_space, features_dim=features_dim)
 
-        self.policy_head = th.nn.Sequential(
-            th.nn.Flatten(),
-            th.nn.Linear(input_feature_dim * EMBEDDING_DIM, self.latent_dim_pi),
-            th.nn.ReLU(),
-        )
-        self.value_head = th.nn.Sequential(
-            th.nn.Flatten(),
-            th.nn.Linear(input_feature_dim * EMBEDDING_DIM, self.latent_dim_vf),
-            th.nn.Tanh(),
+        self.card_embedding = th.nn.Embedding(
+            num_embeddings=self.num_card_tokens, embedding_dim=CARD_EMBEDDING_DIM
         )
 
-
-    def forward(self, features: Tensor) -> Tuple[Tensor, Tensor]:
-        return self.forward_actor(features), self.forward_critic(features)
-
-    def _common_forward(self, x: Tensor) -> Tensor:
-        x = self.transformer_encoder(x)
-        return x
-
-    def forward_actor(self, features: Tensor) -> Tensor:
-        extracted_features = self._common_forward(features)
-        policy_net = self.policy_head(extracted_features)
-        return policy_net
-
-    def forward_critic(self, features: Tensor) -> Tensor:
-        extracted_features = self._common_forward(features)
-        value_net = self.value_head(extracted_features)
-        return value_net
+    def forward(self, obs) -> th.Tensor:
+        hand = obs["current_player_hand"].float()                          # (B, hand_dim)
+        stones = obs["stones"].long().clamp(0, N_STONE_STATES - 1)         # (B, n_stones)
+        stones_oh = F.one_hot(stones, num_classes=N_STONE_STATES).flatten(1).float()
+        played = obs["cards_played"].long().clamp(0, self.num_card_tokens - 1).flatten(1)
+        played_emb = self.card_embedding(played).flatten(1)                # (B, n_played_slots*emb)
+        return th.cat([hand, stones_oh, played_emb], dim=1)
 
 
 class CustomPolicy(MaskableActorCriticPolicy):
@@ -141,14 +68,8 @@ class CustomPolicy(MaskableActorCriticPolicy):
             observation_space,
             action_space,
             lr_schedule,
-            features_extractor_class=CustomFeatureExtractorSimple,
-            net_arch=dict(pi=[ 500, 300, 100 ],vf=[500, 300, 100]),
+            features_extractor_class=CustomFeatureExtractor,
+            net_arch=dict(pi=[256, 256, 128], vf=[256, 256, 128]),
             *args,
             **kwargs,
         )
-    
-    #def _build_mlp_extractor(self) -> None:
-    #    features_dim = self.features_extractor._features_dim
-    #    self.mlp_extractor = CustomNetwork(features_dim, spaces.flatdim(self.action_space)).to(self.device)
-
-
