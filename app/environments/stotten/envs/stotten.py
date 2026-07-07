@@ -238,8 +238,9 @@ class SchottenTottenEnv(GBEnv):
             self.done = True
             return self.observation, reward, terminated, False, self._get_info()
 
-        # Dense, zero-sum shaping: reward the mover for improving their position
-        # relative to the opponent; mirror it onto the opponent so the game stays zero-sum.
+        # Dense, zero-sum shaping on claimed stones only (no virtual card values):
+        # reward the mover for improving their claim position relative to the opponent;
+        # mirror it onto the opponent so the game stays zero-sum.
         relative_gain = ((current_after_score - current_before_score)
                          - (opponent_after_score - opponent_before_score)) / WIN_SCORE
         reward[mover] = relative_gain
@@ -252,8 +253,9 @@ class SchottenTottenEnv(GBEnv):
         # deck is exhausted), the game cannot continue. End it and decide by current score,
         # so MaskablePPO is never handed an all-False action mask.
         if not self.action_masks().any():
-            s_p0 = self.compute_score(PlayerId.PLAYER1.value)
-            s_p1 = self.compute_score(PlayerId.PLAYER2.value)
+            # played-cards combination values break ties between equal claim counts
+            s_p0 = self.compute_score(PlayerId.PLAYER1.value, with_virtual=True)
+            s_p1 = self.compute_score(PlayerId.PLAYER2.value, with_virtual=True)
             self.winner_player = PlayerId.PLAYER1.value if s_p0 >= s_p1 else PlayerId.PLAYER2.value
             reward[self.winner_player] = 1.0
             reward[abs(self.winner_player - 1)] = -1.0
@@ -262,11 +264,14 @@ class SchottenTottenEnv(GBEnv):
 
         return self.observation, reward, terminated, False, self._get_info()
     
-    def compute_score(self, player: int) -> int:
+    def compute_score(self, player: int, with_virtual: bool = False) -> float:
         """
-        Compute the current virtual score for one player
+        Compute the current score for one player
         1 point for each stone claimed, 1 point for each continuous stone claimed
         10 point if winning the game (3 continuous stones claimed or 5 stones claimed)
+        with_virtual adds the played-cards combination values (/1000) on top: only used
+        as a tie-breaker when the game ends by deck/hand exhaustion, NOT in the reward
+        shaping (it rewarded building combos even on lost stones — pure noise for PPO).
         """
         score = 0
         stones = 0
@@ -288,12 +293,12 @@ class SchottenTottenEnv(GBEnv):
                             return WIN_SCORE
                         continue
             cont_score = 0
-        # add virtual card values
-        virtual_card_score = 0
-        for stone_idx in range(NB_STONES):
-            virtual_card_score += float(self.score_stone(self.board.played_cards[stone_idx][player])) / 1000
+        if with_virtual:
+            # add virtual card values
+            for stone_idx in range(NB_STONES):
+                score += float(self.score_stone(self.board.played_cards[stone_idx][player])) / 1000
 
-        return score + stones + virtual_card_score
+        return score + stones
 
     def nicegui_page(self):
         self.render_web = RenderWeb()
