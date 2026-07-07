@@ -1,3 +1,4 @@
+import copy
 import os
 import numpy as np
 import random
@@ -17,6 +18,23 @@ def selfplay_wrapper(env: GBEnv):
             self.opponent_models = load_all_models(self, device)
             self.best_model_name = get_best_model_name(self.name)
             self.logger = logger
+
+        def __deepcopy__(self, memo):
+            """Deep-copy the game state but share the (read-only) opponent models.
+            Determinized MCTS (train_mcts) snapshots the env at every tree node via
+            deepcopy; copying the loaded PPO models there would cost tens of MB and
+            hundreds of ms per node. Models/agents are only used for predict()."""
+            cls = self.__class__
+            new = cls.__new__(cls)
+            memo[id(self)] = new
+            for k, v in self.__dict__.items():
+                if k in ('opponent_models', 'opponent_agent', 'logger'):
+                    setattr(new, k, v)
+                elif k == 'agents':
+                    setattr(new, k, list(v))
+                else:
+                    setattr(new, k, copy.deepcopy(v, memo))
+            return new
 
         def setup_opponents(self):
             self.logger.debug(f'Setting up self play opponents for {self.name} with opponent type: {self.opponent_type}')

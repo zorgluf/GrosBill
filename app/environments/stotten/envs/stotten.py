@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 
+import random
 import logging as logger
 from typing import List, Tuple
 
@@ -264,6 +265,24 @@ class SchottenTottenEnv(GBEnv):
 
         return self.observation, reward, terminated, False, self._get_info()
     
+    def redeterminize(self, pov_player: int):
+        """
+        Re-deal the information hidden from pov_player: the other player's hand and
+        the main deck are pooled, shuffled and re-dealt (hand size preserved). The
+        public state (played cards, stones) and pov_player's own hand are untouched.
+        Used by determinized MCTS (train_mcts) so the search cannot exploit the true
+        deck order or the opponent's actual cards. Game-rule invariant: claim proofs
+        (can_claim_stone) only depend on the pooled unseen cards as a set, which this
+        re-deal preserves.
+        """
+        hidden_player = abs(pov_player - 1)
+        hidden_hand = self.board.players[hidden_player].hand
+        pool = hidden_hand.cards + self.board.main_deck.cards
+        random.shuffle(pool)
+        n_hand = len(hidden_hand.cards)
+        hidden_hand.cards = pool[:n_hand]
+        self.board.main_deck.cards = pool[n_hand:]
+
     def compute_score(self, player: int, with_virtual: bool = False) -> float:
         """
         Compute the current score for one player
