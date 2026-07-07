@@ -159,6 +159,8 @@ def main(args):
     logger.info('Setting up the selfplay evaluation environment opponents...')
     callback_args = {
         'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device),
+        # fixed baseline opponent (base.zip): progress metric independent of promotions
+        'base_eval_env': selfplay_wrapper(base_env)(opponent_type = 'base', logger = logger, device = args.device),
         'best_model_save_path' : config.TMPMODELDIR,
         'log_path' : config.LOGDIR,
         'eval_freq' : args.eval_freq,
