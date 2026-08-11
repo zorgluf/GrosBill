@@ -8,6 +8,10 @@ def get_environment(env_name):
         elif env_name in ('stotten'):
             from environments.stotten.envs.stotten import SchottenTottenEnv
             return SchottenTottenEnv
+        elif env_name == 'stottentr':
+            # same game as stotten, transformer policy + separate zoo/logs namespace
+            from environments.stotten.envs.stotten import SchottenTottenTrEnv
+            return SchottenTottenTrEnv
         else:
             raise Exception(f'No environment found for {env_name}')
     except SyntaxError as e:
@@ -25,6 +29,9 @@ def get_network_arch(env_name):
     elif env_name in ('stotten'):
         from models.stotten.models import CustomPolicy
         return CustomPolicy
+    elif env_name == 'stottentr':
+        from models.stotten.models import TransformerPolicy
+        return TransformerPolicy
     else:
         raise Exception(f'No model architectures found for {env_name}')
     

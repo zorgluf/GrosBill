@@ -357,3 +357,13 @@ class SchottenTottenEnv(GBEnv):
             print(f"  {[f"{card.color}/{card.value}" for card in current_hand]}")
         else:
             self.render_web.render_web(self, **kwargs)
+
+class SchottenTottenTrEnv(SchottenTottenEnv):
+    """Même jeu que SchottenTottenEnv, mais sous le nom 'stottentr' :
+    namespace zoo/ et logs séparés pour l'expérience de policy transformer
+    (models.stotten.models.TransformerPolicy), sans toucher aux snapshots
+    du run MLP convergé dans zoo/stotten/."""
+
+    def __init__(self, player_names: list[str] = None):
+        super().__init__(player_names)
+        self.name = "stottentr"
