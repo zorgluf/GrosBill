@@ -143,9 +143,9 @@ After a few minutes the process should have achieved above the default threshold
 Training runs until you kill the process manually (e.g. with Ctrl-C), so do that now.
 
 As reference, the following parameters are used for training the best models:
-*  For Flamme Rouge:
+*  For Flamme Rouge (zero-sum ranked reward: +1 for the winner, -0.1..-0.4 for the losers, so `-t 0.3` promotes at roughly a 44% win rate, more than twice the 20% chance level):
    ```sh
-   python3 train.py -r -e frouge -t 0.6 -os 2048 -ob 1024 -oe 5
+   python3 train.py -r -e frouge -t 0.3 -os 2048 -ob 1024 -oe 5
    ```
 * For Schotten Totten:
    ```sh

@@ -36,6 +36,14 @@ class FlammeRougeEnv(GBEnv):
     PHASE_CHOOSE_CARD = 2
     PHASE_AFTER_MOVE = 3
 
+    #terminal rewards by finishing rank; zero-sum, winner sign positive
+    RANK_REWARDS = (1.0, -0.1, -0.2, -0.3, -0.4)
+    #cols of relative lead per 1.0 of potential
+    POTENTIAL_SCALE = 1000.0
+    #hard bound on |phi|: cumulative shaping stays below the smallest
+    #terminal magnitude (2*0.045 < 0.1), so sign(episode return) == win
+    PHI_CLIP = 0.045
+
     def __init__(self, player_names: list[str] = None):
         super(FlammeRougeEnv, self).__init__(name="frouge",n_players=5, player_names=player_names)
         
@@ -135,27 +143,33 @@ class FlammeRougeEnv(GBEnv):
 
         return hand_order
 
+    def _rank_key(self, player):
+        #ordering key: furthest-forward cyclist, row 0 beats row 1 on same col
+        return max((player.r_position.col*3 - player.r_position.row),
+                   (player.s_position.col*3 - player.s_position.row))
+
+    def _terminal_rewards(self):
+        keys = [ self._rank_key(p) for p in self.board.players ]
+        order = np.argsort(keys)[::-1]
+        rewards = [0.0] * self.n_players
+        for rank, player_idx in enumerate(order):
+            rewards[player_idx] = self.RANK_REWARDS[rank]
+        return rewards
+
+    def _potential(self):
+        pos = [ max(p.r_position.col, 0) + max(p.s_position.col, 0) for p in self.board.players ]
+        mean = sum(pos) / self.n_players
+        #zero-sum while unclipped; the clip only engages in extreme blowouts
+        return [ float(np.clip((x - mean) / self.POTENTIAL_SCALE, -self.PHI_CLIP, self.PHI_CLIP)) for x in pos ]
+
+    def _shaping_rewards(self):
+        phi = self._potential()
+        shaping = [ a - b for a, b in zip(phi, self._prev_potential) ]
+        self._prev_potential = phi
+        return shaping
+
     def score_game(self):
-        winner_reward = 1000
-        #get progressions
-        positions = [ p.r_position.col + p.s_position.col for p in self.board.players] #max: 144
-        #get card values spends
-        spent = [ - p.s_played.sum_values() - p.r_played.sum_values() for p in self.board.players ] #max: -144
-        #get penalty cards number
-        penalties = [ - p.nb_penalties()*2 for p in self.board.players ] #max: approximately -20
-
-        scores = [ sum(x) for x in zip(positions, spent, penalties) ]
-
-        #is the winner ?
-        if self.done:
-            #get the most advanced user
-            pos = [ max((p.r_position.col*3-p.r_position.row),(p.s_position.col*3-p.s_position.row)) for p in self.board.players]
-            #give reward for winner
-            scores[np.argmax(pos)] = winner_reward
-
-        scores = [ s/winner_reward for s in scores ]
-        logger.info(f"Rewards: {scores}")
-        return scores
+        return self._terminal_rewards()
 
 
     @property
@@ -292,9 +306,12 @@ class FlammeRougeEnv(GBEnv):
                 done = True
                 self.done = done
                 self.current_player = 0
+                #ranked zero-sum outcome only, no shaping on the terminal step
+                rewards = self._terminal_rewards()
+                logger.info(f"Final rewards: {rewards}")
             else:
                 self.finish_turn()
-            rewards = self.score_game()
+                rewards = self._shaping_rewards()
 
         if self.current_player == -1:
             return None, rewards, done, False, self._get_info()
@@ -374,6 +391,7 @@ class FlammeRougeEnv(GBEnv):
 
         self.phase = 0 #2 # 0 = placing start players, 1 = choosing which hand, 2 = choosing which card
         self.hand_number = 0
+        self._prev_potential = [0.0] * self.n_players
 
         #build cyclists list
         self.cyclists = [ (p,"r") for p in self.board.players ] + [ (p,"s") for p in self.board.players ]
