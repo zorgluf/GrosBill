@@ -81,16 +81,23 @@ Install Docker and Docker Compose to make use of the `docker-compose.yml` file
    cd GrosBill
    ```
 
-Build standalone docker play images :
+2. Build standalone docker play images :
   ```sh
-  docker build . -t simple-play-frouge -f Dockerfile_play_frouge
+  docker build . -t grosbill-play -f Dockerfile_play
   ```
-or launch command directly from the *app* directory.
+
+3. Or launch command directly from the *app* directory.
+  ```sh
+  pip install -r requirements.txt
+  cd app
+  python play.py
+  ```
+
 ---
 <!-- TUTORIAL -->
 ## Tutorial
 
-This is a quick tutorial to allow you to start using the two entrypoints into the codebase: `test.py` and `train.py`.
+This is a quick tutorial to allow you to start playing and training a new agent.
 
 ---
 <!-- QUICKSTART -->
@@ -101,7 +108,9 @@ This is a quick tutorial to allow you to start using the two entrypoints into th
 This entrypoint allows you to play against a trained AI, pit AIs against eachother or play against baseline random models. This will launch a web server as a GUI interface on port 8080.
 
    ```sh
-   python3 play 
+   pip install -r requirements.txt
+   cd app
+   python3 play.py
    ```
 
 #### `train.py` 
@@ -124,7 +133,7 @@ As reference, the following parameters are used for training the best models :
    ```
 * For Schotten Totten :
    ```sh
-   python3 train.py -r -e stottent -t 0.7 -os 2048 -ob 1024
+   python train.py -r -e stotten -dev cuda -t 0.3 -ent 0.003 -n_envs 4 -os 2048 -ob 1024 -ne 200
    ```
 
 You can now use the `test.py` entrypoint to play 100 games silently between the current `best_model.zip` and the random baselines model as follows:
@@ -148,7 +157,7 @@ You can continue training the agent by dropping the `-r` reset flag from the `tr
 To monitor training, you can start Tensorboard with the following command:
 
   ```sh
-  bash scripts/tensorboard.sh
+  tensorboard --logdir app/logs
   ```
 
 Navigate to `localhost:6006` in a browser to view the output.
@@ -171,19 +180,6 @@ See the [open issues](https://github.com/zorgluf/GrosBill/issues) for a list of 
 
 
 ---
-<!-- CONTRIBUTING -->
-## Contributing
-
-Any contributions you make are **greatly appreciated**.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-
----
 <!-- LICENSE -->
 ## License
 
@@ -194,4 +190,4 @@ Distributed under the GPL-3.0. See `LICENSE` for more information.
 <!-- CONTACT -->
 ## Contact
 
-François Valley [linkedin](www.linkedin.com/in/francois-valley-1133716)
+François Valley [linkedin](https://www.linkedin.com/in/francois-valley-1133716)
