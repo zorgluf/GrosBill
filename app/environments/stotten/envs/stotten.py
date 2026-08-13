@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 
+import random
 import logging as logger
 from typing import List, Tuple
 
@@ -21,14 +22,19 @@ class SchottenTottenEnv(GBEnv):
 
         #Set up observation space
         self.observation_space = gym.spaces.Dict({
-            "current_player_hand": gym.spaces.Box(low=0, high=59, dtype=np.int8, shape= ( MAX_CARDS_PER_PLAYER, )), #multibinary of all possible cards combination, per card
+            # presence vector over the NB_CARDS distinct cards: 1 if the current player holds that card.
+            # Stationary: a card always occupies the same slot (its identity), regardless of draw order.
+            "current_player_hand": gym.spaces.MultiBinary(NB_CARDS),
             "stones": gym.spaces.Box(low=0, high=2, dtype=np.int8, shape = (NB_STONES,)),  # 3 states for each stone position, 0 : current player position, 1 : neutral, 2 : opponent position
-            "cards_played": gym.spaces.Box(low=0, high=59, dtype=np.int8, shape= ( NB_STONES, 2, 3 )), #multibinary of all played cards for the two side of each stone
-                # [x, 0, y] : y card from the current player played on stone x
+            # played cards as embedding tokens: 0 = empty slot, 1..NB_CARDS = card identity+1.
+            # [x, 0, y] : y-th card played by the current player on stone x ; [x, 1, y] : opponent side.
+            "cards_played": gym.spaces.Box(low=0, high=NB_CARDS, dtype=np.int64, shape= ( NB_STONES, 2, 3 )),
         })
 
         #Set up the action space
-        self.action_space = gym.spaces.Discrete(MAX_CARDS_PER_PLAYER * NB_STONES) #action = card_index_in_hand * NB_STONES + dest stone_index
+        # action = card_identity * NB_STONES + dest stone_index.
+        # Stationary: "play card C on stone S" is always the same integer, independent of hand order.
+        self.action_space = gym.spaces.Discrete(NB_CARDS * NB_STONES)
 
     def reset(self, seed=None):
         super().reset(seed=seed)
@@ -53,11 +59,21 @@ class SchottenTottenEnv(GBEnv):
         """
         return abs(self.current_player - 1)
 
+    @staticmethod
+    def _played_tokens(cards) -> np.ndarray:
+        """Encode up to 3 played cards as embedding tokens (0 = empty, identity+1 otherwise)."""
+        tokens = np.zeros(3, dtype=np.int64)
+        for i, card in enumerate(cards):
+            tokens[i] = card.token
+        return tokens
+
     @property
     def observation(self):
-        current_player_hand = self.board.players[self.current_player].hand.observation
-        while len(current_player_hand) < MAX_CARDS_PER_PLAYER:
-            current_player_hand = np.append(current_player_hand,[0])
+        # Hand as a stationary presence vector over card identities.
+        current_player_hand = np.zeros(NB_CARDS, dtype=np.int8)
+        for card in self.board.players[self.current_player].hand:
+            current_player_hand[card.identity] = 1
+
         stones = list()
         for position in self.board.stones:
             if position == StonePosition.NEUTRAL:
@@ -66,19 +82,14 @@ class SchottenTottenEnv(GBEnv):
                 stones.append(0)
             else:
                 stones.append(2)
-        #build cards_played obs
+        stones = np.array(stones, dtype=np.int8)
+
+        #build cards_played obs (current player side first, opponent side second), as identity tokens
         cards_by_stone = list()
         for i in range(NB_STONES):
-            cards_p1 = Deck(self.board.played_cards[i][PlayerId.PLAYER1.value]).observation
-            while len(cards_p1) < 3:
-                cards_p1 = np.append(cards_p1, [0])
-            cards_p2 = Deck(self.board.played_cards[i][PlayerId.PLAYER2.value]).observation
-            while len(cards_p2) < 3:
-                cards_p2 = np.append(cards_p2, [0])
-            if self.current_player == PlayerId.PLAYER1.value:
-                cards_by_stone.append(np.stack([np.stack(cards_p1), np.stack(cards_p2)]))
-            else:
-                cards_by_stone.append(np.stack([np.stack(cards_p2), np.stack(cards_p1)]))
+            mine = self._played_tokens(self.board.played_cards[i][self.current_player])
+            theirs = self._played_tokens(self.board.played_cards[i][self.current_opponent])
+            cards_by_stone.append(np.stack([mine, theirs]))
         cards_played = np.stack(cards_by_stone)
 
         return dict(
@@ -94,18 +105,21 @@ class SchottenTottenEnv(GBEnv):
     
     def action_masks(self):
         """
-        Returns a list of legal actions for the current player.
+        Returns the boolean legality mask over the identity-based action space.
+        action = card_identity * NB_STONES + stone_idx is legal iff the current player
+        holds that card and the target stone has fewer than 3 of their cards.
         """
-        action_masks = np.ones(self.action_space.n, dtype=bool)
-        player = self.board.players[self.current_player]
-        for hand_idx in range(MAX_CARDS_PER_PLAYER):
-            if hand_idx >= len(player.hand):
-                action_masks[hand_idx*NB_STONES : (hand_idx+1)*NB_STONES] = False
-        for stone_idx in range(NB_STONES):
-            if len(self.board.played_cards[stone_idx][self.current_player]) == 3:
-                for hand_idx in range(MAX_CARDS_PER_PLAYER):
-                    action_masks[hand_idx*NB_STONES + stone_idx] = False
-        return action_masks
+        mask = np.zeros(self.action_space.n, dtype=bool)
+        # which stones still have room on the current player's side
+        open_stones = [s for s in range(NB_STONES)
+                       if len(self.board.played_cards[s][self.current_player]) < 3]
+        if not open_stones:
+            return mask
+        for card in self.board.players[self.current_player].hand:
+            base = card.identity * NB_STONES
+            for stone_idx in open_stones:
+                mask[base + stone_idx] = True
+        return mask
     
     def score_stone(self, cards: Deck) -> int:
         """
@@ -171,70 +185,112 @@ class SchottenTottenEnv(GBEnv):
                     return (True, False)
         return (False, False)
 
+    def _draw_from_hand_by_identity(self, player: int, identity: int) -> Card:
+        """Remove and return the card with the given identity from the player's hand."""
+        hand = self.board.players[player].hand
+        for idx, card in enumerate(hand):
+            if card.identity == identity:
+                return hand.draw_one_by_index(idx)
+        raise Exception(f'Card identity {identity} not in player {player} hand')
+
     def step(self, action: int):
         terminated = False
         reward = [0., 0.]
-        current_before_score = self.compute_score(self.current_player)
-        opponent_before_score = self.compute_score(self.current_opponent)
+        mover = self.current_player          # player taking this action (rewards are attributed by absolute id)
+        opponent = self.current_opponent
+        current_before_score = self.compute_score(mover)
+        opponent_before_score = self.compute_score(opponent)
         # check move legality
         if self.action_masks()[action] == False:
             logger.error(self.observation)
-            logger.error(self.compute_score(self.current_player))
+            logger.error(self.compute_score(mover))
             raise Exception(f'Illegal action {action} : Legal actions {self.action_masks()}')
-        
-        #Play card on stone
-        card = self.board.players[self.current_player].hand.draw_one_by_index(action // NB_STONES)
-        self.board.played_cards[action % NB_STONES][self.current_player].add([card])
+
+        #Play card on stone (identity-based action: card_identity * NB_STONES + stone_idx)
+        card = self._draw_from_hand_by_identity(mover, action // NB_STONES)
+        self.board.played_cards[action % NB_STONES][mover].add([card])
         #Check if current player can claim a stone
-        if self.current_player != -1:
-            for stone_idx in range(NB_STONES):
-                current_claim, opponent_claim = self.can_claim_stone(stone_idx)
-                if current_claim:
-                    if self.current_player == PlayerId.PLAYER1.value:
-                        self.board.stones[stone_idx] = StonePosition.PLAYER1
-                    else:
-                        self.board.stones[stone_idx] = StonePosition.PLAYER2
-                if opponent_claim:
-                    if self.current_opponent == PlayerId.PLAYER1.value:
-                        self.board.stones[stone_idx] = StonePosition.PLAYER1
-                    else:
-                        self.board.stones[stone_idx] = StonePosition.PLAYER2
+        for stone_idx in range(NB_STONES):
+            current_claim, opponent_claim = self.can_claim_stone(stone_idx)
+            if current_claim:
+                if mover == PlayerId.PLAYER1.value:
+                    self.board.stones[stone_idx] = StonePosition.PLAYER1
+                else:
+                    self.board.stones[stone_idx] = StonePosition.PLAYER2
+            if opponent_claim:
+                if opponent == PlayerId.PLAYER1.value:
+                    self.board.stones[stone_idx] = StonePosition.PLAYER1
+                else:
+                    self.board.stones[stone_idx] = StonePosition.PLAYER2
         #draw a card from the main deck
         if len(self.board.main_deck) > 0:
             card = self.board.main_deck.draw(1)
-            self.board.players[self.current_player].hand.add(card)
-        #compute reward for current player
-        current_after_score = self.compute_score(self.current_player)
-        if current_after_score >= WIN_SCORE:
-            reward[self.current_player] = WIN_SCORE
-        else:
-            reward[self.current_player] += current_after_score - current_before_score
-        #scale reward into [0;1]
-        reward[self.current_player] = reward[self.current_player] / WIN_SCORE
-        #compute reward for opponent player
-        opponent_after_score = self.compute_score(self.current_opponent)
-        if opponent_after_score >= WIN_SCORE:
-            reward[self.current_opponent] = WIN_SCORE
-        else:
-            reward[self.current_opponent] += opponent_after_score - opponent_before_score
-        #scale reward into [0;1]
-        reward[self.current_opponent] = reward[self.current_opponent] / WIN_SCORE
-        #check if we are done
+            self.board.players[mover].hand.add(card)
+
+        current_after_score = self.compute_score(mover)
+        opponent_after_score = self.compute_score(opponent)
+
         if (current_after_score >= WIN_SCORE) or (opponent_after_score >= WIN_SCORE):
-            self.winner_player = self.current_player if current_after_score >= opponent_after_score else self.current_opponent
+            # Someone reached the win condition: terminal, zero-sum +1 / -1 outcome.
+            self.winner_player = mover if current_after_score >= opponent_after_score else opponent
+            reward[self.winner_player] = 1.0
+            reward[abs(self.winner_player - 1)] = -1.0
             terminated = True
             self.done = True
-        else:
-            #change player
-            self.current_player = abs(self.current_player - 1)
+            return self.observation, reward, terminated, False, self._get_info()
+
+        # Dense, zero-sum shaping on claimed stones only (no virtual card values):
+        # reward the mover for improving their claim position relative to the opponent;
+        # mirror it onto the opponent so the game stays zero-sum.
+        relative_gain = ((current_after_score - current_before_score)
+                         - (opponent_after_score - opponent_before_score)) / WIN_SCORE
+        reward[mover] = relative_gain
+        reward[opponent] = -relative_gain
+
+        #change player
+        self.current_player = abs(self.current_player - 1)
+
+        # Safety: if the player to move has no legal action (e.g. empty hand after the
+        # deck is exhausted), the game cannot continue. End it and decide by current score,
+        # so MaskablePPO is never handed an all-False action mask.
+        if not self.action_masks().any():
+            # played-cards combination values break ties between equal claim counts
+            s_p0 = self.compute_score(PlayerId.PLAYER1.value, with_virtual=True)
+            s_p1 = self.compute_score(PlayerId.PLAYER2.value, with_virtual=True)
+            self.winner_player = PlayerId.PLAYER1.value if s_p0 >= s_p1 else PlayerId.PLAYER2.value
+            reward[self.winner_player] = 1.0
+            reward[abs(self.winner_player - 1)] = -1.0
+            terminated = True
+            self.done = True
 
         return self.observation, reward, terminated, False, self._get_info()
     
-    def compute_score(self, player: int) -> int:
+    def redeterminize(self, pov_player: int):
         """
-        Compute the current virtual score for one player
+        Re-deal the information hidden from pov_player: the other player's hand and
+        the main deck are pooled, shuffled and re-dealt (hand size preserved). The
+        public state (played cards, stones) and pov_player's own hand are untouched.
+        Used by determinized MCTS (train_mcts) so the search cannot exploit the true
+        deck order or the opponent's actual cards. Game-rule invariant: claim proofs
+        (can_claim_stone) only depend on the pooled unseen cards as a set, which this
+        re-deal preserves.
+        """
+        hidden_player = abs(pov_player - 1)
+        hidden_hand = self.board.players[hidden_player].hand
+        pool = hidden_hand.cards + self.board.main_deck.cards
+        random.shuffle(pool)
+        n_hand = len(hidden_hand.cards)
+        hidden_hand.cards = pool[:n_hand]
+        self.board.main_deck.cards = pool[n_hand:]
+
+    def compute_score(self, player: int, with_virtual: bool = False) -> float:
+        """
+        Compute the current score for one player
         1 point for each stone claimed, 1 point for each continuous stone claimed
         10 point if winning the game (3 continuous stones claimed or 5 stones claimed)
+        with_virtual adds the played-cards combination values (/1000) on top: only used
+        as a tie-breaker when the game ends by deck/hand exhaustion, NOT in the reward
+        shaping (it rewarded building combos even on lost stones — pure noise for PPO).
         """
         score = 0
         stones = 0
@@ -256,12 +312,12 @@ class SchottenTottenEnv(GBEnv):
                             return WIN_SCORE
                         continue
             cont_score = 0
-        # add virtual card values
-        virtual_card_score = 0
-        for stone_idx in range(NB_STONES):
-            virtual_card_score += float(self.score_stone(self.board.played_cards[stone_idx][player])) / 1000
+        if with_virtual:
+            # add virtual card values
+            for stone_idx in range(NB_STONES):
+                score += float(self.score_stone(self.board.played_cards[stone_idx][player])) / 1000
 
-        return score + stones + virtual_card_score
+        return score + stones
 
     def nicegui_page(self):
         self.render_web = RenderWeb()
@@ -301,3 +357,13 @@ class SchottenTottenEnv(GBEnv):
             print(f"  {[f"{card.color}/{card.value}" for card in current_hand]}")
         else:
             self.render_web.render_web(self, **kwargs)
+
+class SchottenTottenTrEnv(SchottenTottenEnv):
+    """Même jeu que SchottenTottenEnv, mais sous le nom 'stottentr' :
+    namespace zoo/ et logs séparés pour l'expérience de policy transformer
+    (models.stotten.models.TransformerPolicy), sans toucher aux snapshots
+    du run MLP convergé dans zoo/stotten/."""
+
+    def __init__(self, player_names: list[str] = None):
+        super().__init__(player_names)
+        self.name = "stottentr"

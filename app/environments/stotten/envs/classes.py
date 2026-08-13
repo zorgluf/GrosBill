@@ -6,6 +6,9 @@ import copy
 
 NB_STONES = 9
 MAX_CARDS_PER_PLAYER = 6
+NB_VALUES = 9   # card values 1..9
+NB_COLORS = 6   # see Color enum below
+NB_CARDS = NB_VALUES * NB_COLORS  # 54 distinct cards in the game
 
 class PlayerId(Enum):
     PLAYER1 = 0
@@ -36,6 +39,24 @@ class Card():
     @property
     def color(self):
         return self._color
+
+    @property
+    def identity(self) -> int:
+        """
+        Stable, unique index in [0, NB_CARDS) for this card.
+        Depends only on the card (value, color), never on hand position or draw order.
+        This is what the action space and observations key off of so that a given
+        action / observation slot always refers to the same physical card.
+        """
+        return (self._value - 1) + self._color.value * NB_VALUES
+
+    @property
+    def token(self) -> int:
+        """
+        Observation token for embeddings: identity + 1, so that 0 stays free as the
+        'no card / empty slot' token (range [1, NB_CARDS]).
+        """
+        return self.identity + 1
 
 class Deck():
     def __init__(self, cards: List[Card] = None):

@@ -59,7 +59,7 @@ def main(args):
 
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
-        , 'ent_coeff':args.entcoeff
+        , 'ent_coef':args.entcoeff
         , 'n_epochs':args.n_epochs
         , 'n_steps':args.n_steps
         , 'batch_size':args.batch_size
@@ -67,6 +67,8 @@ def main(args):
         , 'tensorboard_log':config.LOGDIR
         , 'device': args.device
     }
+    if args.learning_rate is not None:
+        params['learning_rate'] = args.learning_rate
 
     time.sleep(5) # allow time for the base model to be saved out when the environment is created
 
@@ -81,6 +83,8 @@ def main(args):
     logger.info('Setting up the selfplay evaluation environment opponents...')
     callback_args = {
         'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device),
+        # fixed baseline opponent (base.zip): progress metric independent of promotions
+        'base_eval_env': selfplay_wrapper(base_env)(opponent_type = 'base', logger = logger, device = args.device),
         'best_model_save_path' : config.TMPMODELDIR,
         'log_path' : config.LOGDIR,
         'eval_freq' : args.eval_freq,
@@ -140,8 +144,11 @@ def cli() -> None:
             , help="The value of gamma in PPO (0.99: long term reward, 0.95: short term reward)")
   parser.add_argument("--clip_param", "-c",  type = float, default = 0.2
             , help="The clip paramater in PPO (0.1: Very cautious updates, more stable but slower learning, 0.3: More aggressive updates, faster learning but less stable)")
-  parser.add_argument("--entcoeff", "-ent",  type = float, default = 0.05
-            , help="The entropy coefficient in PPO (0.0: No exploration pressure → fast convergence, but risk of local optima, 0.01: Slight exploration encouragement, 0.05–0.1: Balanced exploration, >0.2: Strong exploration → can hurt performance if too random.)")
+  parser.add_argument("--entcoeff", "-ent",  type = float, default = 0.005
+            , help="The entropy coefficient in PPO (0.0: No exploration pressure → fast convergence, but risk of local optima, 0.001: Slight exploration encouragement, 0.005–0.01: Balanced exploration, >0.02: Strong exploration → can hurt performance if too random. Dependant to action space size: the larger, lower the entropy.)")
+
+  parser.add_argument("--learning_rate", "-lr",  type = float, default = None
+            , help="Override the PPO learning rate (default: keep the value saved in the loaded model, 3e-4 for a fresh base). Lower values (1e-4) recommended for the transformer policy (stottentr).")
 
   parser.add_argument("--n_epochs", "-oe",  type = int, default = 5
             , help="The number of epoch to train the PPO agent per batch. Default value is fine for most games.")

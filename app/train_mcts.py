@@ -25,6 +25,35 @@ from gymcts.gymcts_neural_agent import GymctsNeuralAgent
 from gymcts.gymcts_deepcopy_wrapper import DeepCopyMCTSGymEnvWrapper
 from gymcts.logger import log
 
+
+class DeterminizedGymctsNeuralAgent(GymctsNeuralAgent):
+    """ISMCTS-style determinization on top of GymctsNeuralAgent.
+
+    The DeepCopy wrapper snapshots the FULL env state at every tree node — including
+    the deck order and the opponent's hand. Vanilla search therefore plans with
+    perfect information, and its action choices depend on cards the policy cannot
+    observe: the distilled targets are partially unlearnable noise.
+
+    Fix: every time a node state is loaded (expansion and rollout both go through
+    _load_state), re-shuffle the hidden information (opponent hand + deck) via the
+    env's redeterminize(). Each simulation then sees a fresh plausible deal that is
+    consistent with the public state and the agent's own hand.
+    """
+
+    _warned_no_redeterminize = False
+
+    def _load_state(self, node):
+        super()._load_state(node)
+        base_env = self.env.unwrapped
+        if hasattr(base_env, "redeterminize"):
+            if not base_env.done:
+                base_env.redeterminize(base_env.agent_player_num)
+        elif not DeterminizedGymctsNeuralAgent._warned_no_redeterminize:
+            DeterminizedGymctsNeuralAgent._warned_no_redeterminize = True
+            log.warning(f"env {base_env.name} has no redeterminize(): MCTS will plan "
+                        f"with perfect information (hidden-info leak)")
+
+
 def generate_trajectories(agent: GymctsNeuralAgent, logger = logging.getLogger(__name__)):
     states, actions, action_masks, rewards, dones = [], [], [], [], []
     done = False
@@ -74,21 +103,27 @@ def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args
     offline_buffer.reset()
     model.policy.set_training_mode(False)
     num_timesteps = len(states)
+    value = None
     for i, obs in enumerate(states):
         # Prédit les valeurs et log_probs avec le modèle actuel (old_log_probs)
         with torch.no_grad():
             obs_tensor = obs_as_tensor(obs, model.device)
             _, value, log_prob = model.policy(obs_tensor, action_masks=action_masks[i])
+        # episode_start marque le PREMIER step d'un épisode (celui qui suit un done),
+        # pas le dernier : sinon la GAE fuit d'un épisode à l'autre
+        episode_start = np.array([True]) if i == 0 else np.array([dones[i - 1]])
         offline_buffer.add(
             obs=obs,
             action=np.array([actions[i]]),
             reward=rewards[i],
-            episode_start=dones[i],
+            episode_start=episode_start,
             value=value,
             log_prob=log_prob,
             action_masks=action_masks[i]
         )
-        offline_buffer.compute_returns_and_advantage(last_values=value, dones=np.array([dones[i]]))
+    # GAE/returns une seule fois, sur le buffer complet. La dernière transition est
+    # terminale (dones[-1]=True) donc last_values ne sert pas à bootstrapper.
+    offline_buffer.compute_returns_and_advantage(last_values=value, dones=np.array([dones[-1]]))
     model.policy.set_training_mode(True)
 
     # Échange temporairement le buffer du modèle
@@ -104,13 +139,14 @@ def train_offline_ppo(model, states, actions, action_masks, rewards, dones, args
         False,
     )
     callback.on_training_start(locals(), globals())
-    for i in range(args.n_epochs):
-        logger.info(f"Train on MCTS data (epoch {i}/{args.n_epochs})")
-        model.train()
-        model.num_timesteps += num_timesteps
-        model.dump_logs(i)
-        for _ in range(num_timesteps):
-            callback.on_step()
+    logger.info(f"Train on MCTS data ({num_timesteps} transitions, {model.n_epochs} epochs)")
+    # une seule passe : model.train() itère déjà n_epochs fois sur le buffer.
+    # num_timesteps et les callbacks ne comptent chaque transition qu'une fois.
+    model.train()
+    model.num_timesteps += num_timesteps
+    model.dump_logs(0)
+    for _ in range(num_timesteps):
+        callback.on_step()
     callback.on_training_end()
     model.policy.set_training_mode(False)
 
@@ -159,7 +195,7 @@ def main(args):
     env_self = selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device)
     params = {'gamma':args.gamma
         , 'clip_range':args.clip_param
-        , 'ent_coeff':args.entcoeff
+        , 'ent_coef':args.entcoeff
         , 'n_epochs':args.n_epochs
         , 'n_steps':args.n_steps
         , 'batch_size':args.batch_size
@@ -181,6 +217,8 @@ def main(args):
     logger.info('Setting up the selfplay evaluation environment opponents...')
     callback_args = {
         'eval_env': selfplay_wrapper(base_env)(opponent_type = args.opponent_type, logger = logger, device = args.device),
+        # fixed baseline opponent (base.zip): progress metric independent of promotions
+        'base_eval_env': selfplay_wrapper(base_env)(opponent_type = 'base', logger = logger, device = args.device),
         'best_model_save_path' : config.TMPMODELDIR,
         'log_path' : config.LOGDIR,
         'eval_freq' : args.eval_freq,
@@ -201,7 +239,7 @@ def main(args):
             logger.info(f"Generate trajectories {i}/{args.nb_episode_gen}")
             env_self.reset()
             env = DeepCopyMCTSGymEnvWrapper(env_self, action_mask_fn=lambda env: env.env.action_masks())
-            agent = GymctsNeuralAgent(
+            agent = DeterminizedGymctsNeuralAgent(
                 env=env,
                 render_tree_after_step=False,
                 render_tree_max_depth=3,
@@ -281,8 +319,8 @@ def cli() -> None:
             , help="The nubmer of episode to generate with mcts explorations.")
   parser.add_argument("--nb_improve_loop", "-niloop",  type = int, default = 10
             , help="The number of improvement loop (mcts search + PPO training of model).")
-  parser.add_argument("--nb_sim_mcts", "-simmcts",  type = int, default = 10
-            , help="The number of MCTS simulations per step.")
+  parser.add_argument("--nb_sim_mcts", "-simmcts",  type = int, default = 100
+            , help="The number of MCTS simulations per step. With ~50 legal actions per state, fewer than ~100 simulations is barely better than the raw policy prior.")
 
   parser.add_argument("--device", "-dev",  type = str, default = "cpu"
             , help="The device to use")
