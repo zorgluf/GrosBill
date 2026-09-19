@@ -148,11 +148,14 @@ class FlammeRougeEnv(GBEnv):
         return max((player.r_position.col*3 - player.r_position.row),
                    (player.s_position.col*3 - player.s_position.row))
 
-    def _terminal_rewards(self):
+    def _finish_order(self):
+        #player indices sorted from first to last place
         keys = [ self._rank_key(p) for p in self.board.players ]
-        order = np.argsort(keys)[::-1]
+        return [ int(i) for i in np.argsort(keys)[::-1] ]
+
+    def _terminal_rewards(self):
         rewards = [0.0] * self.n_players
-        for rank, player_idx in enumerate(order):
+        for rank, player_idx in enumerate(self._finish_order()):
             rewards[player_idx] = self.RANK_REWARDS[rank]
         return rewards
 
@@ -306,9 +309,10 @@ class FlammeRougeEnv(GBEnv):
                 done = True
                 self.done = done
                 self.current_player = 0
+                self.winner_player = self._finish_order()[0]
                 #ranked zero-sum outcome only, no shaping on the terminal step
                 rewards = self._terminal_rewards()
-                logger.info(f"Final rewards: {rewards}")
+                logger.info(f"Final rewards: {rewards}, winner: {self.winner_player}")
             else:
                 self.finish_turn()
                 rewards = self._shaping_rewards()
@@ -386,6 +390,7 @@ class FlammeRougeEnv(GBEnv):
             self.board.add_player(player)
             player_id += 1
         self.current_player = 0
+        self.winner_player = None
         self.turns_taken = 0
         
 
