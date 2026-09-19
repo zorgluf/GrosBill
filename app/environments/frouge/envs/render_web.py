@@ -85,13 +85,13 @@ class RenderWeb:
                                 if cell == CV:
                                     bg_c = "transparent"
                                 if cell == CC: # climb
-                                    bg_c = "red" # light red
+                                    bg_c = "rgba(255, 0, 0, 0.3)" # light red (alpha so red riders stay visible)
                                 if cell == CD: # descent
-                                    bg_c = "blue" # blue
+                                    bg_c = "rgba(0, 0, 255, 0.25)" # light blue (alpha so blue riders stay visible)
                                 if cell == CP: # paved
-                                    bg_c = "yellow" # yellow
+                                    bg_c = "rgba(255, 255, 0, 0.45)" # light yellow
                                 if cell == CSU: # supply cell
-                                    bg_c = "cyan" # cyan
+                                    bg_c = "rgba(0, 255, 255, 0.4)" # light cyan
                                 if cell == CS: # start
                                     bg_c = "darkgrey" # gray
                                 if cell == CF: # finish
@@ -126,13 +126,13 @@ class RenderWeb:
                     if cell == CV:
                         bg_c = "transparent"
                     if cell == CC: # climb
-                        bg_c = "red" # light red
+                        bg_c = "rgba(255, 0, 0, 0.3)" # light red (alpha so red riders stay visible)
                     if cell == CD: # descent
-                        bg_c = "blue" # blue
+                        bg_c = "rgba(0, 0, 255, 0.25)" # light blue (alpha so blue riders stay visible)
                     if cell == CP: # paved
-                        bg_c = "yellow" # yellow
+                        bg_c = "rgba(255, 255, 0, 0.45)" # light yellow
                     if cell == CSU: # supply cell
-                        bg_c = "cyan" # cyan
+                        bg_c = "rgba(0, 255, 255, 0.4)" # light cyan
                     if cell == CS: # start
                         bg_c = "darkgrey" # gray
                     if cell == CF: # finish

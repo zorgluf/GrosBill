@@ -66,7 +66,7 @@ def cli() -> None:
   formatter_class = argparse.ArgumentDefaultsHelpFormatter
   parser = argparse.ArgumentParser(formatter_class=formatter_class)
 
-  parser.add_argument("--env_name", "-e", type = str, default = 'tictactoe'
+  parser.add_argument("--env_name", "-e", type = str, default = 'frouge'
               , help="Which gym environment to train in: frouge, stotten")
   
   parser.add_argument("--threshold", "-t",  type = float, default = 0.5

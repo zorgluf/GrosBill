@@ -125,7 +125,7 @@ def cli() -> None:
               , help="Debug logging")
   parser.add_argument("--verbose", "-v", action = 'store_true', default = False
               , help="Show observation in debug output")
-  parser.add_argument("--env_name", "-e", type = str, default = 'tictactoe'
+  parser.add_argument("--env_name", "-e", type = str, default = 'frouge'
               , help="Which gym environment to train in: frouge, stotten")
   parser.add_argument("--log_name", "-log", type = str, default = None
               , help="Name of the experiment in tensorboard")

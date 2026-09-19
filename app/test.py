@@ -116,7 +116,7 @@ def cli() -> None:
             , help="Show observation on debug logging")
   parser.add_argument("--randomise_players", "-r",  action = 'store_true', default = False
             , help="Randomise the player order")
-  parser.add_argument("--env_name", "-e",  type = str, default = 'TicTacToe'
+  parser.add_argument("--env_name", "-e",  type = str, default = 'frouge'
             , help="Which game to play?")
   parser.add_argument("--write_results", "-w",  action = 'store_true', default = False
             , help="Write results to a file?")

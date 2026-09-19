@@ -2,6 +2,7 @@ private
 archive
 venv
 app/.nicegui
+CLAUDE.md
 
 .DS_Store
 # Documentatino notebooks since they're copied over when the build_docs script
