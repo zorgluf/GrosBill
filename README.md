@@ -142,17 +142,19 @@ After a few minutes the process should have achieved above the default threshold
 
 Training runs until you kill the process manually (e.g. with Ctrl-C), so do that now.
 
-As reference, the following parameters are used for training the best models:
-*  For Flamme Rouge (zero-sum ranked reward: +1 for the winner, -0.1..-0.4 for the losers, so `-t 0.3` promotes at roughly a 44% win rate, more than twice the 20% chance level):
+As reference, the following parameters are used for initial training of the best models:
+*  For Flamme Rouge:
    ```sh
-   python3 train.py -r -e frouge -t 0.3 -os 2048 -ob 1024 -oe 5
+   python3 train.py -r -e frouge -t 0.2 -ent 0.003 -n_envs 4 -os 2048 -ob 1024
    ```
 * For Schotten Totten:
    ```sh
-   python3 train.py -r -e stotten -dev cuda -t 0.3 -ent 0.003 -n_envs 4 -os 2048 -ob 1024 -ne 200
+   python3 train.py -r -e stotten -t 0.3 -ent 0.003 -n_envs 4 -os 2048 -ob 1024 -ne 200
    ```
 
 Beware: the `-r` / `--reset` flag deletes the existing models and logs of the environment before starting from scratch. You can continue training an existing agent by dropping it — training will just pick up from where it left off.
+
+Training can be fine-tuned by lowering entropy until 0 and decreasing lr from default 3e-4 into 1e-4.
 
 #### `test.py`
 
