@@ -76,7 +76,10 @@ def main(args):
             logger.debug(f'Rewards: {reward}')
 
             while info['next_step_no_action'] and not done:
-                obs, reward, done, _ , info = env.step(-1)
+                # add the rewards up: the step before a no-action step may carry
+                # some (e.g. end-of-turn scoring) that must not be overwritten
+                obs, extra, done, _ , info = env.step(-1)
+                reward = [r + e for r, e in zip(reward, extra)]
                 logger.debug(f'No action needed, continuing...')
 
             for r, player in zip(reward, players):

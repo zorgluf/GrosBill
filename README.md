@@ -49,9 +49,10 @@
 
 GrosBill lets you **play board games against AI agents in your browser**, and **train those agents yourself** through self-play reinforcement learning.
 
-Two games are currently implemented:
+Three games are currently implemented:
 * **Flamme Rouge** (`frouge`) — the cycling race game, played as 1 human against 4 AI riders
 * **Schotten Totten** (`stotten`) — the 2-player card game, played head-to-head against the AI
+* **Small World** (`smallw`) — the 3-player conquest game (base game, 14 races and 20 special powers), played as 1 human against 2 AIs; no agent has been trained for it yet, so its opponents currently play random legal moves
 
 This project initially started as a fork of the great project [SIMPLE](https://github.com/davidADSP/SIMPLE) made by David Foster [@davidADSP](https://twitter.com/davidADSP) - david@adsp.ai.
 To learn more about this initial project, check out the accompanying [blog post](https://medium.com/applied-data-science/how-to-train-ai-agents-to-play-multiplayer-games-using-self-play-deep-reinforcement-learning-247d0b440717).
@@ -81,7 +82,7 @@ Either:
 * **Docker** (and Docker Compose to make use of the `docker-compose.yml` file) — the easiest way to just play, or
 * **Python 3.12** with `pip` if you prefer to run natively (a virtual environment is recommended)
 
-Pre-trained models for both games are shipped in the repo (`app/zoo/pretrained/`), so you can play right away without training anything.
+Pre-trained models for Flamme Rouge and Schotten Totten are shipped in the repo (`app/zoo/pretrained/`), so you can play right away without training anything. Small World has no trained model yet — see [Small World](#small-world) below.
 
 ### Installation
 
@@ -133,7 +134,7 @@ Open http://localhost:8080 and pick a game from the home page. Each game loads t
 
 This entrypoint allows you to start training the AI using self-play PPO (the maskable-action variant `MaskablePPO` from [sb3-contrib](https://sb3-contrib.readthedocs.io/)).
 
-You must select the environment to train with `-e` (`frouge`, `stotten`, or `stottentr` — a transformer-policy variant of Schotten Totten kept in its own zoo/logs namespace). For a detailed explanation of the training parameters, please read the help carefully:
+You must select the environment to train with `-e` (`frouge`, `stotten`, `stottentr` — a transformer-policy variant of Schotten Totten kept in its own zoo/logs namespace — or `smallw`). For a detailed explanation of the training parameters, please read the help carefully:
    ```sh
    python3 train.py --help
    ```
@@ -170,6 +171,23 @@ Played 100 games: {'best_model_btkce': 31.0, 'base_sajsi': -15.5, 'base_poqaj': 
 ```
 
 You can also pass `human` as one of the agents to play in the terminal (not supported by current game implementation, still work in progress), or any archived model name from `app/zoo/<env>/` to pit specific model generations against each other.
+
+#### Small World
+
+Small World is a 3-player game: you play one seat, two AIs play the others. **No agent has been trained for it yet**, so `play.py` loads the untrained `base` policy for both opponents — they pick uniformly among the legal moves. Training it is the obvious next step (`python3 train.py -r -e smallw -os 2048 -ob 256`), and a *real* network (embeddings over the region/card tokens, a pointer head over the region actions) is still future work: `app/models/smallw/models.py` is deliberately a small MLP over the flattened observation.
+
+To play, launch `play.py`, open http://localhost:8080 and follow the **Small World** link (open the home page first: it initialises the display options). Everything is played from the board: click a combo card to take a race, click a region to conquer / abandon / redeploy / place a marker, and use the buttons for *decline*, *end conquests* and the Diplomat alliances. The event log under the board tells you what the AIs did.
+
+The environment ships its own test suite (no pytest needed) and a reproducible asset extractor:
+
+  ```sh
+  cd app
+  python3 -m environments.smallw.tests.run_all            # 202 tests, ~1 min
+  python3 environments/smallw/assets_extract.py --check   # verify the committed static/ files
+  python3 environments/smallw/assets_extract.py           # rebuild them from the PDFs in docs/
+  ```
+
+The board and card images live in `app/environments/smallw/static/` (served at `/smallw_static`) and are committed, so the game runs without the `docs/` sources. The design notes, the rules interpretations and the task log are in `docs/smallw_plan.md`.
 
 #### Other training entrypoints (experimental)
 
