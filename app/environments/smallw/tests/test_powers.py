@@ -424,6 +424,21 @@ def test_diplomat_ally_phase_offers_the_opponents_not_attacked():
     _check_powers_invariants(env, 'diplomat ally')
 
 
+def test_diplomat_ally_action_is_a_relative_seat_offset():
+    """`ally_action(k)` targets the seat `k` places after the acting one, like
+    the egocentric observation (seat 1 picking offset 1 allies with seat 2)."""
+    env = _env(314)
+    _setup_turn(env, 1, RaceId.RATMEN, PowerId.DIPLOMAT, hand=0, held={9: 1},
+                turns_played=2)
+    env.step(A_PASS)
+    assert env.phase == Phase.ALLY and env._turn_seat == 1
+    assert set(_legal(env)) == {A_PASS, ally_action(1), ally_action(2)}
+    assert 'ally with ' + env.players[2].name == env.describe_action(ally_action(1))
+    env.step(ally_action(1))
+    assert env.players[1].ally == 2
+    _check_powers_invariants(env, 'diplomat relative ally')
+
+
 def test_diplomat_cannot_ally_with_a_player_he_attacked():
     """An attacked opponent leaves the ALLY options."""
     env = _env(313)

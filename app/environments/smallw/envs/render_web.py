@@ -553,7 +553,8 @@ def button_actions(env) -> dict[str, dict]:
     masks = env.action_masks()
     allies = {}
     for seat in range(env.n_players):
-        action = sw.A_ALLY + seat
+        # the ally actions are relative to the acting player (egocentric)
+        action = sw.A_ALLY + (seat - env._turn_seat) % env.n_players
         allies[seat] = {
             'label': f'Ally with {env.players[seat].name}',
             'action': action,

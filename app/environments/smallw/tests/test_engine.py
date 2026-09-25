@@ -1153,6 +1153,30 @@ def test_unsupported_player_counts_are_explicit():
             raise AssertionError(f'SmallWorldEnv({n}) should raise')
 
 
+def test_observation_exposes_attack_costs_income_and_mask():
+    """`regions` column 16 = attack cost + 1 (0 = not attackable), `players`
+    column 13 = projected income, `mask` = `action_masks()`."""
+    env = _env(41)
+    rip = _setup_turn(env, 0, RaceId.RATMEN, None, hand=6, held={9: 1, 10: 2},
+                      turns_played=2)
+    obs = env.observation
+    assert env.observation_space.contains(obs)
+    assert (obs['mask'] == env.action_masks()).all()
+    attackable = 0
+    for region in env.board.regions:
+        col = obs['regions'][region.index][16]
+        if env._can_attack(rip, region):
+            attackable += 1
+            assert col == env._conquest_cost(rip, region) + 1, region.id
+        else:
+            assert col == 0, region.id
+    assert attackable > 0
+    assert obs['players'][0][13] == 2, 'two regions, no bonus'
+    for k in range(env.n_players):
+        seat = (env.current_player + k) % env.n_players
+        assert obs['players'][k][13] == env._projected_income(env.players[seat])
+
+
 # --------------------------------------------------------------------------- #
 # Runner
 # --------------------------------------------------------------------------- #

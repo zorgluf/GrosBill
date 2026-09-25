@@ -270,8 +270,8 @@ def test_combo_pick_pays_and_collects_value_one_coins():
 def test_observation_shows_the_value_for_self_and_the_count_for_opponents():
     env = SmallWorldEnv(3)
     obs, _info = env.reset(seed=7)
-    assert PLAYER_COLS == 13
-    assert obs['players'].shape == (5, 13)
+    assert PLAYER_COLS == 14
+    assert obs['players'].shape == (5, 14)
     assert env.observation_space.contains(obs)
 
     seat0 = env.current_player

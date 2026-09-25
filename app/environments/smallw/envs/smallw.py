@@ -25,7 +25,8 @@ Action space (`Discrete(133)`, laid out for 5 players and 30 regions)
 38-67      `A_REGION_ALL + index`: redeploy every remaining token there
 68-97      `A_SORCERER + index`: Sorcerer substitution on that region
 98-127     `A_DRAGON + index`: Dragon Master conquest on that region
-128-132    `A_ALLY + seat`: Diplomat ally (absolute seat index)
+128-132    `A_ALLY + offset`: Diplomat ally (seat at relative offset 1..4
+           from the acting player — the observation is egocentric too)
 =========  ==========================================================
 
 `index` is the 0-based region index (`region.id - 1`).
@@ -53,6 +54,9 @@ Observation (`gym.spaces.Dict` of int64 boxes)
 13   hero
 14   dragon
 15   conquered this turn: 0 = no, else relative seat + 1
+16   attack cost for the acting race + 1 (0 = not attackable / no acting
+     race): `_conquest_cost`, every race / power modifier and the die
+     included, whatever the tokens in hand
 ===  ==========================================================
 
 `players` (5, 13) — row `k` = the seat at relative offset `k` from the current
@@ -75,6 +79,8 @@ player (row 0 = current player, unused rows are zero), columns:
 10   Diplomat ally: relative offset + 1 (0 = none)
 11   must make a first conquest next
 12   number of coin tokens held (public for every player)
+13   projected income: the coins this player would score if his turn ended
+     now (regions + race / power bonuses, public information)
 ===  ==========================================================
 
 `combos` (6, 3) — race id + 1, power id + 1, coins lying on it (always "1"
@@ -98,6 +104,9 @@ top of the column).
 14     placements left in the current sub-phase (encampments / heroes)
 15     number of visible combos
 =====  ==========================================================
+
+`mask` (133,) — `action_masks()` as 0/1, so the network sees the legal targets
+(all zeros outside a decision point).
 
 Reward (plan 3.7, zero-sum)
 ---------------------------
@@ -167,7 +176,7 @@ A_REGION = 8         #: 8..37   region index (conquer / abandon / place)
 A_REGION_ALL = 38    #: 38..67  region index (redeploy everything there)
 A_SORCERER = 68      #: 68..97  region index (Sorcerer substitution)
 A_DRAGON = 98        #: 98..127 region index (Dragon Master conquest)
-A_ALLY = 128         #: 128..132 absolute seat index (Diplomat)
+A_ALLY = 128         #: 128..132 relative seat offset (Diplomat)
 N_ACTIONS = 133      #: size of the action space
 
 KIND_COMBO = 'combo'
@@ -200,9 +209,10 @@ def dragon_action(index: int) -> int:
     return A_DRAGON + int(index)
 
 
-def ally_action(seat: int) -> int:
-    """Diplomat action choosing the absolute `seat` as ally."""
-    return A_ALLY + int(seat)
+def ally_action(offset: int) -> int:
+    """Diplomat action choosing as ally the seat at relative `offset` (1..4)
+    from the acting player."""
+    return A_ALLY + int(offset)
 
 
 def action_kind(action: int) -> tuple[str, int]:
@@ -210,7 +220,7 @@ def action_kind(action: int) -> tuple[str, int]:
 
     Kinds: ``'combo'`` (combo index), ``'decline'``, ``'pass'`` (argument 0),
     ``'region'`` / ``'region_all'`` / ``'sorcerer'`` / ``'dragon'`` (0-based
-    region index) and ``'ally'`` (absolute seat).
+    region index) and ``'ally'`` (relative seat offset).
 
     Raises:
         ValueError: if `action` is outside the action space.
@@ -281,20 +291,24 @@ _RD_VICTIM = 'victim'    # an opponent redeploying his losses
 # Observation layout
 # --------------------------------------------------------------------------- #
 
-REGION_COLS = 16
-PLAYER_COLS = 13
+REGION_COLS = 17
+PLAYER_COLS = 14
 COMBO_COLS = 3
 GLOBAL_COLS = 16
 
+#: Attack costs are clipped to this in the observation (`regions` column 16).
+MAX_ATTACK_COST = 30
+
 #: Upper bound of every `regions` column (see the module docstring).
 _REGION_HIGH = np.array(
-    [len(Terrain) - 1, 1, 1, 1, 1, 1, 11, len(RaceId), 30, 1, 1, 5, 1, 1, 1, MAX_PLAYERS],
+    [len(Terrain) - 1, 1, 1, 1, 1, 1, 11, len(RaceId), 30, 1, 1, 5, 1, 1, 1, MAX_PLAYERS,
+     MAX_ATTACK_COST + 1],
     dtype=np.int64,
 )
 #: Upper bound of every `players` column.
 _PLAYER_HIGH = np.array(
     [1, 999, len(RaceId), len(PowerId), 30, 30, len(RaceId), len(RaceId), 30, 30,
-     MAX_PLAYERS, 1, 999],
+     MAX_PLAYERS, 1, 999, 99],
     dtype=np.int64,
 )
 #: Upper bound of every `combos` column.
@@ -349,6 +363,8 @@ class SmallWorldEnv(GBEnv):
                 shape=(N_VISIBLE_COMBOS, COMBO_COLS), dtype=np.int64),
             'global': gym.spaces.Box(
                 low=0, high=_GLOBAL_HIGH, shape=(GLOBAL_COLS,), dtype=np.int64),
+            'mask': gym.spaces.Box(
+                low=0, high=1, shape=(N_ACTIONS,), dtype=np.int64),
         })
         self.action_space = gym.spaces.Discrete(N_ACTIONS)
 
@@ -656,7 +672,7 @@ class SmallWorldEnv(GBEnv):
         elif phase == Phase.ALLY:
             mask[A_PASS] = True
             for seat in self._ally_options():
-                mask[A_ALLY + seat] = True
+                mask[A_ALLY + (seat - self._turn_seat) % self.n_players] = True
 
         elif phase == Phase.STOUT_DECLINE:
             mask[A_DECLINE] = True
@@ -1253,8 +1269,8 @@ class SmallWorldEnv(GBEnv):
         if kind == KIND_PASS:
             self._log(f'{player.name} chooses no ally')
         else:
-            player.ally = arg
-            self._log(f'{player.name} allies with {self.players[arg].name} '
+            player.ally = (self._turn_seat + arg) % self.n_players
+            self._log(f'{player.name} allies with {self.players[player.ally].name} '
                       f'(who cannot attack his active race until his next turn)')
         self._advance_end_phase(Phase.ALLY)
 
@@ -1376,6 +1392,15 @@ class SmallWorldEnv(GBEnv):
         gains = [0] * self.n_players
         gains[player.seat] = gained
         self._shape(gains)
+
+    def _projected_income(self, player: PlayerState) -> int:
+        """Coins `player` would score right now (`_score` without its effects)."""
+        income = 0
+        for rip in player.all_races():
+            income += len(self.board.regions_of_race(rip))
+            if not rip.in_decline or self._rip_flag('bonus_in_decline', rip):
+                income += self._score_bonus(rip)
+        return income
 
     def _shape(self, gains: list[int]) -> None:
         """Add the zero-sum shaping reward of one scoring event."""
@@ -1524,6 +1549,7 @@ class SmallWorldEnv(GBEnv):
         """The observation of `current_player` (see the module docstring)."""
         n = self.n_players
         seat0 = self.current_player if 0 <= self.current_player < n else 0
+        rip = self._acting_rip
 
         regions = np.zeros((MAX_REGIONS, REGION_COLS), dtype=np.int64)
         for region in self.board.regions:
@@ -1550,6 +1576,8 @@ class SmallWorldEnv(GBEnv):
             row[14] = int(region.dragon)
             row[15] = (0 if region.conquered_this_turn_by is None
                        else ((region.conquered_this_turn_by - seat0) % n) + 1)
+            if rip is not None and self._can_attack(rip, region):
+                row[16] = min(self._conquest_cost(rip, region), MAX_ATTACK_COST) + 1
 
         players = np.zeros((MAX_PLAYERS, PLAYER_COLS), dtype=np.int64)
         for k in range(n):
@@ -1574,13 +1602,13 @@ class SmallWorldEnv(GBEnv):
             row[10] = 0 if player.ally is None else ((player.ally - seat0) % n) + 1
             row[11] = int(player.must_first_conquest)
             row[12] = player.coin_count
+            row[13] = min(self._projected_income(player), int(_PLAYER_HIGH[13]))
 
         combos = np.zeros((N_VISIBLE_COMBOS, COMBO_COLS), dtype=np.int64)
         for i, combo in enumerate(self.combo_column.visible[:N_VISIBLE_COMBOS]):
             combos[i] = (int(combo.race) + 1, int(combo.power) + 1,
                          min(combo.coins, int(_COMBO_HIGH[2])))
 
-        rip = self._acting_rip
         glob = np.zeros(GLOBAL_COLS, dtype=np.int64)
         glob[0] = self.turn
         glob[1] = self.turns_total
@@ -1601,7 +1629,7 @@ class SmallWorldEnv(GBEnv):
         glob[15] = len(self.combo_column.visible)
 
         return {'regions': regions, 'players': players, 'combos': combos,
-                'global': glob}
+                'global': glob, 'mask': self.action_masks().astype(np.int64)}
 
     # ------------------------------------------------------------------ #
     # Imperfect information
@@ -1648,7 +1676,8 @@ class SmallWorldEnv(GBEnv):
                 return 'stay active'
             return 'pass'
         if kind == KIND_ALLY:
-            return f'ally with {self.players[arg].name}'
+            seat = (self._turn_seat + arg) % self.n_players
+            return f'ally with {self.players[seat].name}'
         region = self.board.by_index(arg)
         label = f'region {region.id} ({self._terrain(region)})'
         if kind == KIND_SORCERER:
