@@ -102,6 +102,10 @@ class PlayOptions:
     record = False
 
 def create_game_page(env_class, env_name, agents_names, agent_load_names):
+    # random seating order: shuffle display names and models together
+    seats = list(zip(agents_names, agent_load_names))
+    random.shuffle(seats)
+    agents_names, agent_load_names = [list(s) for s in zip(*seats)]
     env = env_class(player_names=agents_names)
     # set seed
     seed = random.randint(0,1000)
