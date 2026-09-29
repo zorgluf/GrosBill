@@ -137,10 +137,8 @@ def stotten_page():
 def smallw_page():
     from environments.smallw.envs.smallw import SmallWorldEnv
 
-    # no trained model yet: 'base' loads (or creates) zoo/smallw/base.zip,
-    # i.e. a freshly initialised policy = random play among the legal actions
     agents_names = ['human', 'computer 1', 'computer 2']
-    create_game_page(SmallWorldEnv, 'smallw', agents_names, ['human', 'base', 'base'])
+    create_game_page(SmallWorldEnv, 'smallw', agents_names, ['human', 'best_model', 'best_model'])
 
 
 @ui.page('/')
