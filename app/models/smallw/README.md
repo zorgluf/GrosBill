@@ -4,6 +4,11 @@ Design of the policy in `models.py` (`CustomPolicy`), replacing the original
 `CombinedExtractor` + MLP placeholder (which only proved SB3 accepted the spaces).
 Implemented as described below; nothing has been trained with it yet.
 
+![smallw policy architecture](architecture.svg)
+
+`architecture.svg` is generated from the live network (sizes, parameter counts, the real
+region-distance matrix): `python3 -m models.smallw.draw_architecture` from `app/`.
+
 ## Prerequisites on the environment side
 
 These cap performance whatever the network, so they come first.
