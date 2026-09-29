@@ -102,6 +102,10 @@ class PlayOptions:
     record = False
 
 def create_game_page(env_class, env_name, agents_names, agent_load_names):
+    # random seating order: shuffle display names and models together
+    seats = list(zip(agents_names, agent_load_names))
+    random.shuffle(seats)
+    agents_names, agent_load_names = [list(s) for s in zip(*seats)]
     env = env_class(player_names=agents_names)
     # set seed
     seed = random.randint(0,1000)
@@ -129,6 +133,14 @@ def stotten_page():
     create_game_page(SchottenTottenEnv, 'stotten', agents_names, ['human', 'best_model'])
 
 
+@ui.page('/smallw')
+def smallw_page():
+    from environments.smallw.envs.smallw import SmallWorldEnv
+
+    agents_names = ['human', 'computer 1', 'computer 2']
+    create_game_page(SmallWorldEnv, 'smallw', agents_names, ['human', 'best_model', 'best_model'])
+
+
 @ui.page('/')
 def index():
     #init options on user scope
@@ -136,6 +148,7 @@ def index():
 
     ui.link('Flamme Rouge', frouge_page)
     ui.link('Schotten Totten', stotten_page)
+    ui.link('Small World', smallw_page)
     with ui.row():
         ui.label('Suggest action:')
         ui.toggle({True:"Yes",False:"No"}).bind_value(app.storage.user["options"], 'suggest')
@@ -145,8 +158,10 @@ def index():
     with ui.row():
         frouge_traj_count = count_trajectories('frouge')
         stotten_traj_count = count_trajectories('stotten')
+        smallw_traj_count = count_trajectories('smallw')
         ui.label(f'Flamme Rouge trajectories: {frouge_traj_count}')
         ui.label(f'Schotten Totten trajectories: {stotten_traj_count}')
+        ui.label(f'Small World trajectories: {smallw_traj_count}')
 
 
 def count_trajectories(env_name):
