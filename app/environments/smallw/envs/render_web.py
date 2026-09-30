@@ -129,6 +129,17 @@ def piece_url(name: str) -> str:
     return f'{STATIC_URL}/pieces/{name}.jpg'
 
 
+def _url_prefix() -> str:
+    """Path prefix of the current page behind a reverse proxy (same rule as
+    NiceGUI: `X-Forwarded-Prefix` header + ASGI `root_path`), '' otherwise."""
+    try:
+        request = ui.context.client.request
+    except (AttributeError, RuntimeError):              # pragma: no cover
+        return ''                                       # no page request
+    return (request.headers.get('X-Forwarded-Prefix', '')
+            + request.scope.get('root_path', ''))
+
+
 def board_url() -> str:
     """URL of the board image."""
     return f'{STATIC_URL}/{BOARD_IMAGE}'
@@ -1238,6 +1249,12 @@ class RenderWeb:
             return
         content = board_overlay_svg(env, suggested_action=self._suggested,
                                     mode=self.current_mode(env))
+        # behind a path-rewriting reverse proxy, NiceGUI prefixes the `src` of
+        # its image elements in the browser, but not the hrefs inside raw SVG
+        prefix = _url_prefix()
+        if prefix:
+            content = content.replace(f'href="{STATIC_URL}/',
+                                      f'href="{prefix}{STATIC_URL}/')
         image = ui.interactive_image(
             board_url(), content=content, on_mouse=self._on_board_mouse,
             events=['click'], cross=False, sanitize=False,
