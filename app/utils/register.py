@@ -15,13 +15,16 @@ def get_environment(env_name):
         elif env_name == 'smallw':
             from environments.smallw.envs.smallw import SmallWorldEnv
             return SmallWorldEnv
+        elif env_name == 'jamaica':
+            from environments.jamaica.envs.jamaica import JamaicaEnv
+            return JamaicaEnv
         else:
             raise Exception(f'No environment found for {env_name}')
     except SyntaxError as e:
         print(e)
         raise Exception(f'Syntax Error for {env_name}!')
-    except:
-        raise Exception(f'Install the environment first using: \nbash scripts/install_env.sh {env_name}\nAlso ensure the environment is added to /utils/register.py')
+    except Exception as e:
+        raise Exception(f'Install the environment first using: \nbash scripts/install_env.sh {env_name}\nAlso ensure the environment is added to /utils/register.py') from e
     
 
 
@@ -37,6 +40,9 @@ def get_network_arch(env_name):
         return TransformerPolicy
     elif env_name == 'smallw':
         from models.smallw.models import CustomPolicy
+        return CustomPolicy
+    elif env_name == 'jamaica':
+        from models.jamaica.models import CustomPolicy
         return CustomPolicy
     else:
         raise Exception(f'No model architectures found for {env_name}')
