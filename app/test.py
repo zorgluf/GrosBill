@@ -59,7 +59,7 @@ def main(args):
         if args.randomise_players:
             random.shuffle(players)
 
-        obs = env.reset(seed = seed)
+        obs = env.reset(seed = seed + game)  # a new deal every game
         done = False
     
         for i, p in enumerate(players):

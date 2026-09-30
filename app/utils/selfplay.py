@@ -3,6 +3,7 @@ import os
 import numpy as np
 import random
 
+import config
 from utils.files import load_model, load_all_models, get_best_model_name
 from utils.agents import Agent
 from utils.env import GBEnv
@@ -15,7 +16,14 @@ def selfplay_wrapper(env: GBEnv):
             super(SelfPlayEnv, self).__init__()
             self.device = device
             self.opponent_type = opponent_type
-            self.opponent_models = load_all_models(self, device)
+            if opponent_type == 'start':
+                # frozen reference: the model the training run starts from (same rule as
+                # train.py), loaded once and never hot-reloaded on promotions
+                start_name = 'best_model.zip' if os.path.exists(os.path.join(config.MODELDIR, self.name, 'best_model.zip')) else 'base.zip'
+                self.start_model = load_model(self, start_name, device)
+                self.opponent_models = []
+            else:
+                self.opponent_models = load_all_models(self, device)
             self.best_model_name = get_best_model_name(self.name)
             self.logger = logger
 
@@ -28,7 +36,7 @@ def selfplay_wrapper(env: GBEnv):
             new = cls.__new__(cls)
             memo[id(self)] = new
             for k, v in self.__dict__.items():
-                if k in ('opponent_models', 'opponent_agent', 'logger'):
+                if k in ('opponent_models', 'start_model', 'opponent_agent', 'logger'):
                     setattr(new, k, v)
                 elif k == 'agents':
                     setattr(new, k, list(v))
@@ -40,7 +48,7 @@ def selfplay_wrapper(env: GBEnv):
             self.logger.debug(f'Setting up self play opponents for {self.name} with opponent type: {self.opponent_type}')
             # incremental load of new model
             best_model_name = get_best_model_name(self.name)
-            if self.best_model_name != best_model_name:
+            if self.opponent_type != 'start' and self.best_model_name != best_model_name:
                 self.logger.info(f'Using new best model: {best_model_name}')
                 self.opponent_models.append(load_model(self, best_model_name, self.device ))
                 self.best_model_name = best_model_name
@@ -66,6 +74,9 @@ def selfplay_wrapper(env: GBEnv):
 
             elif self.opponent_type == 'base':
                 self.opponent_agent = Agent('base', self.opponent_models[0])  
+
+            elif self.opponent_type == 'start':
+                self.opponent_agent = Agent('start', self.start_model)
 
             self.agent_player_num = np.random.choice(self.n_players)
             self.agents = [self.opponent_agent] * self.n_players

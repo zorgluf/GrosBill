@@ -14,7 +14,8 @@ class SelfPlayCallback(MaskableEvalCallback):
   def __init__(self, opponent_type, threshold, env_name, logger, *args, base_eval_env=None, **kwargs):
     super(SelfPlayCallback, self).__init__(*args, **kwargs)
     self.log = logger
-    # fixed baseline env (opponent_type='base'): progress metric independent of promotions
+    # fixed reference env (opponent_type='start'): the model this run starts from, frozen,
+    # so the progress metric is independent of promotions
     self.base_eval_env = base_eval_env
     self.opponent_type = opponent_type
     self.model_dir = os.path.join(config.MODELDIR, env_name)
@@ -25,13 +26,18 @@ class SelfPlayCallback(MaskableEvalCallback):
 
     self.threshold = threshold # the threshold is a constant
 
+    if self.base_eval_env is not None and self.base_eval_env.opponent_type == 'start':
+      ref = f"best_model.zip (generation {self.generation})" if os.path.exists(os.path.join(self.model_dir, 'best_model.zip')) else "base.zip"
+      self.log.info(f"Fixed eval reference (eval/*_vs_base): {ref}")
+
 
   def _on_step(self) -> bool:
 
     if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
 
-      # Progress metric: evaluate against the frozen base (random-init) opponent.
-      # Unlike the self-play eval below, this baseline never moves, so the curve in
+      # Progress metric: evaluate against the frozen start model (base.zip on a fresh
+      # run, best_model.zip as it was at launch otherwise; tags keep the historical
+      # "_vs_base" name). Unlike the self-play eval below, this reference never moves, so the curve in
       # tensorboard shows whether the agent is actually improving even when no
       # generation gets promoted. Recorded before super()._on_step() so the parent's
       # logger.dump() flushes everything at the same timestep.
@@ -50,7 +56,7 @@ class SelfPlayCallback(MaskableEvalCallback):
         mean_reward_vs_base = float(np.mean(ep_rewards))
         self.logger.record("eval/win_rate_vs_base", win_rate_vs_base)
         self.logger.record("eval/mean_reward_vs_base", mean_reward_vs_base)
-        self.log.info("Eval vs base: win_rate={:.2f}, mean_reward={:.2f}".format(win_rate_vs_base, mean_reward_vs_base))
+        self.log.info("Eval vs start model: win_rate={:.2f}, mean_reward={:.2f}".format(win_rate_vs_base, mean_reward_vs_base))
 
       result = super(SelfPlayCallback, self)._on_step() #this will set self.best_mean_reward to the reward from the evaluation as it's previously -np.inf
 

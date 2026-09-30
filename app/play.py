@@ -2,6 +2,7 @@ from nicegui import ui, app
 import random
 import os
 import shutil
+import config
 from utils.agents import Agent
 from utils.files import load_model
 from utils.register import get_trajectory_path
@@ -141,6 +142,23 @@ def smallw_page():
     create_game_page(SmallWorldEnv, 'smallw', agents_names, ['human', 'best_model', 'best_model'])
 
 
+def _model_or_base(env_name, model='best_model'):
+    """`model` if a trained file exists (own zoo or pretrained), else 'base'."""
+    for folder in (os.path.join(config.MODELDIR, env_name), os.path.join(config.MODELDIR, 'pretrained', env_name)):
+        if os.path.exists(os.path.join(folder, f'{model}.zip')):
+            return model
+    return 'base'
+
+
+@ui.page('/jamaica')
+def jamaica_page():
+    from environments.jamaica.envs.jamaica import JamaicaEnv
+
+    agents_names = ['human', 'computer 1', 'computer 2', 'computer 3']
+    model = _model_or_base('jamaica')
+    create_game_page(JamaicaEnv, 'jamaica', agents_names, ['human', model, model, model])
+
+
 @ui.page('/')
 def index():
     #init options on user scope
@@ -149,6 +167,7 @@ def index():
     ui.link('Flamme Rouge', frouge_page)
     ui.link('Schotten Totten', stotten_page)
     ui.link('Small World', smallw_page)
+    ui.link('Jamaica', jamaica_page)
     with ui.row():
         ui.label('Suggest action:')
         ui.toggle({True:"Yes",False:"No"}).bind_value(app.storage.user["options"], 'suggest')
@@ -159,9 +178,11 @@ def index():
         frouge_traj_count = count_trajectories('frouge')
         stotten_traj_count = count_trajectories('stotten')
         smallw_traj_count = count_trajectories('smallw')
+        jamaica_traj_count = count_trajectories('jamaica')
         ui.label(f'Flamme Rouge trajectories: {frouge_traj_count}')
         ui.label(f'Schotten Totten trajectories: {stotten_traj_count}')
         ui.label(f'Small World trajectories: {smallw_traj_count}')
+        ui.label(f'Jamaica trajectories: {jamaica_traj_count}')
 
 
 def count_trajectories(env_name):
