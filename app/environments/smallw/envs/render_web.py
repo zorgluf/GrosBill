@@ -744,7 +744,7 @@ def status_entries(env, pov_player: int | None = None) -> list[tuple[str, str]]:
 #: Toasts: how long each log line stays on screen, and how many lines one
 #: repaint may pop (the bots can log dozens of lines between two human moves;
 #: the older ones are summed up in one toast, the full text stays in the log).
-TOAST_TIMEOUT_MS = 2000
+TOAST_TIMEOUT_MS = 4000
 TOAST_MAX_LINES = 8
 #: Compact toasts, so a burst covers less of the board.
 TOAST_CSS = """

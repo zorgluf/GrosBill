@@ -2,6 +2,7 @@ from nicegui import ui, app
 import random
 import os
 import shutil
+import config
 from utils.agents import Agent
 from utils.files import load_model
 from utils.register import get_trajectory_path
@@ -90,16 +91,24 @@ def load_agents(env, agent_names, device):
 
     if app.storage.user["options"].suggest:
         # load best agent for suggestion
-        ppo_model = load_model(env, f'best_model.zip', device)
+        ppo_model = load_model(env, f'{trained_or_base(env.name)}.zip', device)
         agent_obj = Agent(f"Suggest Agent", ppo_model)
         agents.append(agent_obj)
     
     return agents
 
+def trained_or_base(env_name, name='best_model'):
+    """`name` if a trained model exists for `env_name` (zoo or pretrained), else 'base'."""
+    for d in (os.path.join(config.MODELDIR, env_name), os.path.join(config.MODELDIR, 'pretrained', env_name)):
+        if os.path.exists(os.path.join(d, f'{name}.zip')):
+            return name
+    return 'base'
+
 @dataclass
 class PlayOptions:
     suggest = False
     record = False
+    jamaica_players = 4
 
 def create_game_page(env_class, env_name, agents_names, agent_load_names):
     # random seating order: shuffle display names and models together
@@ -141,6 +150,16 @@ def smallw_page():
     create_game_page(SmallWorldEnv, 'smallw', agents_names, ['human', 'best_model', 'best_model'])
 
 
+@ui.page('/jamaica')
+def jamaica_page():
+    from environments.jamaica.envs.jamaica import JamaicaEnv
+
+    n_players = app.storage.user["options"].jamaica_players
+    model = trained_or_base('jamaica')
+    agents_names = ['human'] + [f'computer {i}' for i in range(1, n_players)]
+    create_game_page(JamaicaEnv, 'jamaica', agents_names, ['human'] + [model] * (n_players - 1))
+
+
 @ui.page('/')
 def index():
     #init options on user scope
@@ -149,6 +168,9 @@ def index():
     ui.link('Flamme Rouge', frouge_page)
     ui.link('Schotten Totten', stotten_page)
     ui.link('Small World', smallw_page)
+    with ui.row().classes('items-center'):
+        ui.link('Jamaica', jamaica_page)
+        ui.select({n: f'{n} players' for n in range(3, 7)}).bind_value(app.storage.user["options"], 'jamaica_players')
     with ui.row():
         ui.label('Suggest action:')
         ui.toggle({True:"Yes",False:"No"}).bind_value(app.storage.user["options"], 'suggest')
@@ -159,9 +181,11 @@ def index():
         frouge_traj_count = count_trajectories('frouge')
         stotten_traj_count = count_trajectories('stotten')
         smallw_traj_count = count_trajectories('smallw')
+        jamaica_traj_count = count_trajectories('jamaica')
         ui.label(f'Flamme Rouge trajectories: {frouge_traj_count}')
         ui.label(f'Schotten Totten trajectories: {stotten_traj_count}')
         ui.label(f'Small World trajectories: {smallw_traj_count}')
+        ui.label(f'Jamaica trajectories: {jamaica_traj_count}')
 
 
 def count_trajectories(env_name):

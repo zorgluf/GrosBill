@@ -8,15 +8,18 @@ arguments from `play.py` are ignored).
 Layout::
 
     +---------------------------+------------------------------------+
-    | status (round, Captain, dice, whose decision)                  |
+    | status (round, Captain, dice, whose decision, my instruction)  |
     +---------------------------+------------------------------------+
     | board (interactive image) | controls (buttons of the decision) |
     |                           | my hand, my holds, my treasures    |
     |                           | battle panel                       |
+    |                           | players (one card per seat,        |
+    |                           |   clockwise from me)               |
     +---------------------------+------------------------------------+
-    | players (one card per seat, clockwise from me)                 |
     | game log                                                       |
     +----------------------------------------------------------------+
+
+New log lines also pop as short toasts at the top of the page (as in smallw).
 
 The board is our own drawing (`art.board_svg`, served as a data URI, so no
 static route and no reverse-proxy prefix issue) with an SVG overlay for the
@@ -208,6 +211,16 @@ def status_text(env) -> str:
     return f'Round {env.round} · Captain {env.player_names[env.captain]} · dice {dice} · {who}'
 
 
+def active_seat(env) -> int:
+    """The seat to mark as playing: the one deciding now, or, while the UI
+    waits for "next", the ship whose turn just played (-1 once the game is over)."""
+    if env.done:
+        return -1
+    if env.current_player >= 0:
+        return env.current_player
+    return env.resolving if env.resolving >= 0 else env._last_seat
+
+
 def standings(env) -> list[dict]:
     rows = []
     for seat, s in enumerate(env.ships):
@@ -238,7 +251,11 @@ def board_overlay_svg(env, suggested_action: int | None = None, callback=None) -
             x, y = board_xy(env, n)
             parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{art.SPACE_R + 5}" fill="none" '
                          f'stroke="#ffeb3b" stroke-width="3.5" stroke-dasharray="6 3"/>')
+    active = active_seat(env)
     for seat, (x, y) in ship_slots(env).items():
+        if seat == active:
+            parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="13" fill="#ffffff" fill-opacity="0.55" '
+                         f'stroke="{art.SEAT_COLORS[seat]}" stroke-width="3"/>')
         parts.append(art.ship(x, y, art.SEAT_COLORS[seat], 15, title=env.player_names[seat]))
     if suggested_action is not None and d is not None and d.kind in (Phase.MOVE_DEST, Phase.RETREAT_DEST):
         k = suggested_action - A_DEST
@@ -262,6 +279,43 @@ def _svg(content: str):
 # the page
 # --------------------------------------------------------------------------- #
 
+#: Toasts: how long each log line stays on screen, and how many lines one
+#: repaint may pop (the bots can log dozens of lines between two human moves;
+#: the older ones are summed up in one toast, the full text stays in the log).
+TOAST_TIMEOUT_MS = 4000
+TOAST_MAX_LINES = 8
+#: Compact toasts, so a burst covers less of the board.
+TOAST_CSS = """
+.q-notification.jamaica-toast {
+    min-height: 0; padding: 2px 12px; margin-top: 3px;
+    font-size: 12px; opacity: 0.92;
+}
+.q-notification.jamaica-toast .q-notification__message { padding: 2px 0; }
+"""
+
+
+def new_log_lines(log: list[tuple[int, str, int]], pov: int, seen: tuple[int, int] | None
+                  ) -> tuple[list[str], tuple[int, int]]:
+    """The lines of `log` visible to `pov` and not toasted yet, and the new
+    `seen` marker.
+
+    `seen` is ``(id(log), count)`` from the previous call: a reset of the game
+    replaces the list, so a new id means everything is new.
+    """
+    start = seen[1] if seen is not None and seen[0] == id(log) else 0
+    start = min(start, len(log))
+    lines = [t for _, t, m in log[start:] if t.strip() and (pov < 0 or m >> pov & 1)]
+    return lines, (id(log), len(log))
+
+
+def toast_messages(lines: list[str], limit: int = TOAST_MAX_LINES) -> list[str]:
+    """What to pop for `lines`: the last `limit`, the older ones summed up."""
+    if len(lines) <= limit:
+        return list(lines)
+    skipped = len(lines) - (limit - 1)
+    return [f'… {skipped} earlier event(s), see the game log'] + lines[-(limit - 1):]
+
+
 SECTIONS = ('status', 'board', 'controls', 'side', 'players', 'log')
 
 
@@ -274,6 +328,8 @@ class RenderWeb:
         self._callback = None
         self._suggested: int | None = None
         self.die_order = 0          #: Captain's choice before clicking a card
+        #: `(id(event_log), length)` of the log lines already toasted
+        self._toasted: tuple[int, int] | None = None
 
     # -- actions --------------------------------------------------------- #
 
@@ -339,9 +395,9 @@ class RenderWeb:
                 ui.label('☀').classes('text-lg')
                 _svg(art.die_svg(env.dice[1], 28, 'evening'))
                 ui.label('☾').classes('text-lg')
-        if self._playable():
-            prompt = PHASE_PROMPTS.get(Phase(self._env.pending.kind), '')
-            ui.label(prompt).classes('text-body1 text-weight-bold text-deep-orange-9')
+            if self._playable():
+                prompt = PHASE_PROMPTS.get(Phase(self._env.pending.kind), '')
+                ui.label(prompt).classes('text-body1 text-weight-bold text-deep-orange-9')
 
     def _build_board(self):
         env = self._env
@@ -450,15 +506,23 @@ class RenderWeb:
     def _build_players(self):
         env = self._env
         pov = viewer(env)
-        with ui.row().classes('gap-2 items-stretch'):
+        active = active_seat(env)
+        with ui.row().classes('w-full gap-2 items-stretch flex-wrap'):
             for seat in seat_order(env):
                 s = env.ships[seat]
                 color = art.SEAT_COLORS[seat]
-                with ui.card().classes('q-pa-sm').style(f'border-top: 5px solid {color}; min-width: 190px'):
+                style = f'border-top: 5px solid {color}; min-width: 190px'
+                if seat == active:
+                    style += f'; outline: 3px solid {color}; outline-offset: 1px'
+                with ui.card().classes('q-pa-sm').style(style):
                     title = env.player_names[seat]
                     if seat == env.captain:
                         title += '  ⚓ Captain'
-                    ui.label(title).classes('text-subtitle2')
+                    with ui.row().classes('w-full items-center justify-between no-wrap gap-1'):
+                        ui.label(title).classes('text-subtitle2')
+                        if seat == active:
+                            ui.label('▶ playing' if env.current_player >= 0 else '▶ just played'
+                                     ).classes('text-caption text-weight-bold').style(f'color: {color}')
                     ui.label(env.space_label(s.node, s.lap) if not s.finished else 'in Port Royal (finished)'
                              ).classes('text-caption')
                     with ui.row().classes('gap-1'):
@@ -487,9 +551,27 @@ class RenderWeb:
                 ui.label(text).classes('text-xs').style('white-space: pre-wrap; line-height: 1.15;')
         area.scroll_to(percent=1.0)
 
+    def _toast_new_lines(self) -> None:
+        """Pop the log lines logged since the last repaint as short toasts,
+        stacked at the top of the page (Quasar stacks same-position ones)."""
+        env = self._env
+        lines, self._toasted = new_log_lines(env.event_log, viewer(env), self._toasted)
+        messages = toast_messages(lines)
+        if not messages:
+            return
+        # `ui.notify` needs a live slot: the clicked button may have just been
+        # deleted by the repaint, the section containers are only cleared.
+        # Quasar puts the newest toast on top: send them in reverse so a burst
+        # reads top-down in order.
+        with self._slots['log']:
+            for message in reversed(messages):
+                ui.notify(message, position='top', timeout=TOAST_TIMEOUT_MS,
+                          group=False, classes='jamaica-toast')
+
     # -- contract -------------------------------------------------------- #
 
     def init_web(self, env, callback=None):
+        ui.add_css(TOAST_CSS)
         self._env, self._callback, self._suggested = env, callback, None
         slots = {}
         with ui.column().classes('w-full gap-2 q-pa-sm'):
@@ -499,13 +581,15 @@ class RenderWeb:
                 with ui.column().classes('gap-2').style('flex: 1 1 auto; min-width: 0;'):
                     slots['controls'] = ui.column().classes('w-full gap-1')
                     slots['side'] = ui.column().classes('w-full gap-1')
-            slots['players'] = ui.column().classes('w-full gap-1')
+                    slots['players'] = ui.column().classes('w-full gap-1')
             slots['log'] = ui.column().classes('w-full gap-1')
         self._slots = slots
         self._paint()
+        self._toast_new_lines()
 
     def render_web(self, env, callback=None, suggested_action: int | None = None, **kwargs):
         self._env = env
         self._callback = callback
         self._suggested = suggested_action
         self._paint()
+        self._toast_new_lines()

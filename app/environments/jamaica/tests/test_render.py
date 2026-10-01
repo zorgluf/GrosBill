@@ -109,3 +109,36 @@ def test_buttons_do_not_leak():
         assert rw.decision_buttons(env) == rw.decision_buttons(clone)
         checked += 1
     assert checked > 10
+
+
+def test_toast_lines():
+    env = make_env(4, seed=7)
+    rng = random.Random(0)
+    seen = None
+    toasted = {p: [] for p in (-1, 0, 1)}
+    marks = {p: None for p in toasted}
+    while not env.done:
+        env.step(-1 if env.current_player == -1 else rng.choice(env.legal_actions()))
+        for p in toasted:
+            lines, marks[p] = rw.new_log_lines(env.event_log, p, marks[p])
+            toasted[p] += lines
+    for p in toasted:   # every visible line toasted exactly once, in order
+        assert toasted[p] == [t for _, t in env.log_lines(p) if t.strip()]
+    assert rw.new_log_lines(env.event_log, -1, marks[-1])[0] == []
+    lines, seen = rw.new_log_lines(env.event_log, -1, marks[-1])
+    env.reset(seed=8)   # a reset replaces the log: everything is new again
+    assert rw.new_log_lines(env.event_log, -1, seen)[0] == [t for _, t in env.log_lines(-1) if t.strip()]
+    msgs = rw.toast_messages([str(i) for i in range(20)], limit=8)
+    assert len(msgs) == 8 and msgs[0].startswith('… 13 earlier') and msgs[-1] == '19'
+
+
+def test_active_seat():
+    for env in _states(n_games=3, every=3):
+        seat = rw.active_seat(env)
+        if env.done:
+            assert seat == -1
+        elif env.current_player >= 0:
+            assert seat == env.current_player
+        else:   # waiting for "next": the ship that just played its turn
+            assert 0 <= seat < env.n_players
+            assert seat == env.resolving or env.resolving < 0
