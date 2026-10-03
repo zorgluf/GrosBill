@@ -19,7 +19,7 @@ Layout
     | event log (scrollable, newest at the bottom)             |
     +----------------------------------------------------------+
 
-The board is `static/board3p.png` (597x297 px) with an SVG overlay drawn in
+The board is `static/board3p.svg` (597x297 px) with an SVG overlay drawn in
 the **image pixel coordinates**: the race token of every occupied region with
 its token count, greyscaled while the race is in decline, the markers (Lost
 Tribe, Mountain, Troll's Lair — drawn by hand, no artwork exists —, fortress,
@@ -110,23 +110,23 @@ def register_static_files() -> None:
 
 
 def race_banner_url(race) -> str:
-    """URL of the race banner image (≈430x230)."""
-    return f'{STATIC_URL}/races/{RACES[race].key}.png'
+    """URL of the 429x230 race banner image."""
+    return f'{STATIC_URL}/races/{RACES[race].key}.svg'
 
 
 def race_token_url(race) -> str:
     """URL of the 88x88 race token image."""
-    return f'{STATIC_URL}/races/{RACES[race].key}_token.jpg'
+    return f'{STATIC_URL}/races/{RACES[race].key}_token.svg'
 
 
 def power_badge_url(power) -> str:
     """URL of the 115x115 special power badge image."""
-    return f'{STATIC_URL}/powers/{POWERS[power].key}.png'
+    return f'{STATIC_URL}/powers/{POWERS[power].key}.svg'
 
 
 def piece_url(name: str) -> str:
-    """URL of one of the `pieces/` images (`coin_1`, `fortress`, `die`, ...)."""
-    return f'{STATIC_URL}/pieces/{name}.jpg'
+    """URL of one of the `pieces/` images (`coin_1`, `fortress`, `turn_marker`, ...)."""
+    return f'{STATIC_URL}/pieces/{name}.svg'
 
 
 def _url_prefix() -> str:
@@ -1418,9 +1418,11 @@ class RenderWeb:
                         'flex: 1 1 auto; min-width: 0;'):
                     slots['controls'] = ui.column().classes('w-full gap-1')
                     slots['board'] = ui.column().classes('w-full gap-0')
+                    # under the board, not under the (taller) combo column
+                    slots['players'] = ui.row().classes(
+                        'w-full items-stretch gap-2')
                 slots['combos'] = ui.column().classes('gap-1').style(
                     f'flex: 0 0 auto; width: {COMBO_COLUMN_PX}px;')
-            slots['players'] = ui.row().classes('w-full items-stretch gap-2')
             slots['log'] = ui.column().classes('w-full gap-1')
         self._slots = slots
         self._paint()

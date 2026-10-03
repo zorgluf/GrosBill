@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Seafaring badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">SEAFARING</text>
+<g transform="translate(57.5 54) scale(1)"><path d="M-22 6 H22 L14 16 H-14 Z" fill="#8d5a3b" stroke="#5d3a1a" stroke-width="2" stroke-linejoin="round"/><path d="M0 6 V-24" stroke="#5d3a1a" stroke-width="2"/><path d="M2 -22 L18 2 H2 Z" fill="#ffffff" stroke="#7a8a99" stroke-width="1.5" stroke-linejoin="round"/><path d="M-2 -18 L-16 2 H-2 Z" fill="#f5f5f5" stroke="#7a8a99" stroke-width="1.5" stroke-linejoin="round"/><path d="M-26 20 Q-20 16 -14 20 T-2 20 T10 20 T22 20" stroke="#4f95c9" stroke-width="2.5" fill="none"/></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">5</text>
+<text x="74" y="99" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="10" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">water</text>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Alchemist badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">ALCHEMIST</text>
+<g transform="translate(57.5 54) scale(1)"><path d="M-6 -20 H6 V-8 L15 10 Q17 18 10 18 H-10 Q-17 18 -15 10 L-6 -8 Z" fill="#e3f2fb" stroke="#4a6572" stroke-width="2" stroke-linejoin="round"/><path d="M-11 4 H11 L15 10 Q17 18 10 18 H-10 Q-17 18 -15 10 Z" fill="#43a047"/><rect x="-8" y="-24" width="16" height="5" rx="2" fill="#8d6e63"/><circle cx="-3" cy="-2" r="2" fill="#a5d6a7"/><circle cx="3" cy="-8" r="1.5" fill="#a5d6a7"/></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">4</text>
+<g transform="translate(90 92) scale(1)"><polygon points="12,5 5,12 -5,12 -12,5 -12,-5 -5,-12 5,-12 12,-5" fill="#e9c24f" stroke="#a57f14" stroke-width="1.82" stroke-linejoin="round"/><text x="0" y="0.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13.65" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#5a4300">+2</text></g>
+<text x="58" y="99" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="10" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">/turn</text>
+</svg>

@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><title>3 coin</title>
+<g transform="translate(28 28) scale(1)"><polygon points="24,9.9 9.9,24 -9.9,24 -24,9.9 -24,-9.9 -9.9,-24 9.9,-24 24,-9.9" fill="#d3d7dd" stroke="#7d838c" stroke-width="3" stroke-linejoin="round"/><polygon points="18.5,7.7 7.7,18.5 -7.7,18.5 -18.5,7.7 -18.5,-7.7 -7.7,-18.5 7.7,-18.5 18.5,-7.7" fill="none" stroke="#7d838c" stroke-width="1.2" opacity="0.6"/><text x="0" y="1" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#7d838c">3</text></g>
+</svg>

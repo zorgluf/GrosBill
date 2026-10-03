@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="429" height="230" viewBox="0 0 429 230"><title>Giants banner</title>
+<rect x="2" y="2" width="425" height="226" rx="26" fill="#fbf6ea" stroke="#4f87a8" stroke-width="4"/>
+<path d="M2 28 Q2 2 28 2 H262 L246 56 H2 Z" fill="#4f87a8"/>
+<text x="124" y="30" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="30" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff" letter-spacing="1">GIANTS</text>
+<g transform="translate(126 110) scale(1.25)"><g transform="translate(-34 0) scale(1)"><rect x="-24" y="-24" width="48" height="48" rx="7.2" fill="#bfc3cc" stroke="#5a4a3a" stroke-width="2.4"/><g transform="translate(0 0) scale(1.8)"><path d="M-9 6 L-3 -6 L1 1 L4 -3 L9 6 Z" fill="#8a909c"/><path d="M-3 -6 L-5 -2 L-3 -3 L-1.5 -2.5 Z" fill="#ffffff"/></g></g><g transform="translate(30 0) scale(1)"><rect x="-22" y="-22" width="44" height="44" rx="5.5" fill="#ffffff" stroke="#5f6b7a" stroke-width="2.86"/><text x="0" y="0.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="24.2" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#1f2d3d">-1</text></g></g>
+<text x="126" y="182" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">to conquer next to</text>
+<text x="126" y="204" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">your Mountains</text>
+<clipPath id="portrait"><circle cx="330" cy="113" r="93"/></clipPath>
+<circle cx="330" cy="113" r="93" fill="#c3e3f4"/>
+<g clip-path="url(#portrait)"><g transform="translate(242 31) scale(2)"><path d="M56 14 Q66 3 78 9 Q89 18 83 30 Q72 37 60 30 Q51 22 56 14 Z" fill="#9e9e9e"/><path d="M0 104 Q2 64 44 62 Q86 64 88 104 Z" fill="#8d6e63"/><path d="M66 64 Q80 46 72 30" stroke="#e3a483" stroke-width="9" fill="none" stroke-linecap="round"/><circle cx="22" cy="46" r="4.5" fill="#e3a483"/><circle cx="66" cy="46" r="4.5" fill="#e3a483"/><path d="M22 46 Q22 18 44 18 Q66 18 66 46 Q66 66 44 66 Q22 66 22 46 Z" fill="#e3a483"/><path d="M31 38 L41 40.5 M47 40.5 L57 38" stroke="#5d4037" stroke-width="3.2" stroke-linecap="round"/><circle cx="36.5" cy="44.5" r="1.8" fill="#2b2b2b"/><circle cx="51.5" cy="44.5" r="1.8" fill="#2b2b2b"/><path d="M44 41 Q50 51 44 53 Q38 51 44 41 Z" fill="#cf8c6c"/><path d="M37 59 H51" stroke="#6d3b2a" stroke-width="2.2" stroke-linecap="round"/></g></g>
+<circle cx="330" cy="113" r="93" fill="none" stroke="#4f87a8" stroke-width="5"/>
+<circle cx="388" cy="188" r="32" fill="#e8762c" stroke="#ffffff" stroke-width="4"/>
+<text x="388" y="190" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">6</text>
+</svg>

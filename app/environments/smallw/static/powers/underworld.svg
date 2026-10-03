@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Underworld badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">UNDERWORLD</text>
+<g transform="translate(57.5 54) scale(1)"><g transform="translate(0 0) scale(3)"><circle r="7" fill="#4a4a4a" stroke="#ffffff" stroke-width="1"/><path d="M-5 4 Q-5 -5 0 -5 Q5 -5 5 4 Z" fill="#9a9a9a"/><path d="M-2.8 4 Q-2.8 -2 0 -2 Q2.8 -2 2.8 4 Z" fill="#111111"/></g></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">5</text>
+<g transform="translate(90 92) scale(1)"><rect x="-12" y="-12" width="24" height="24" rx="3" fill="#ffffff" stroke="#5f6b7a" stroke-width="1.56"/><text x="0" y="0.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13.2" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#1f2d3d">-1</text></g>
+</svg>

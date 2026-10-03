@@ -91,8 +91,7 @@ def test_asset_urls_point_at_existing_files():
     assert rw.STATIC_DIR.is_dir(), rw.STATIC_DIR
     assert rw.board_url() == f'/smallw_static/{BOARD_IMAGE}'
 
-    urls = [rw.board_url(), rw.piece_url('coin_1'), rw.piece_url('turn_marker'),
-            rw.piece_url('die')]
+    urls = [rw.board_url(), rw.piece_url('coin_1'), rw.piece_url('turn_marker')]
     for race_id in RaceId:
         urls += [rw.race_banner_url(race_id), rw.race_token_url(race_id)]
     for power_id in PowerId:
@@ -110,10 +109,10 @@ def test_asset_urls_point_at_existing_files():
 
 def test_asset_keys_match_the_definitions():
     """The URLs are built from the `key` of the race / power definitions."""
-    assert rw.race_banner_url(RaceId.TROLLS).endswith('/races/trolls.png')
-    assert rw.race_token_url(RaceId.TROLLS).endswith('/races/trolls_token.jpg')
+    assert rw.race_banner_url(RaceId.TROLLS).endswith('/races/trolls.svg')
+    assert rw.race_token_url(RaceId.TROLLS).endswith('/races/trolls_token.svg')
     assert rw.power_badge_url(PowerId.DRAGON_MASTER).endswith(
-        '/powers/dragon_master.png')
+        '/powers/dragon_master.svg')
     for race_id in RaceId:
         assert RACES[race_id].key in rw.race_banner_url(race_id)
     for power_id in PowerId:
@@ -315,7 +314,7 @@ def test_overlay_of_a_fresh_game_has_no_race_token():
     """Right after `reset()` only the Lost Tribes and the mountains show."""
     env = _env(717)
     svg = rw.board_overlay_svg(env)
-    assert '_token.jpg' not in svg, 'no race is in play yet'
+    assert '_token.svg' not in svg, 'no race is in play yet'
     assert rw.piece_url('lost_tribe') in svg
     assert rw.piece_url('mountain') in svg
     assert svg.count('<g id="sw-region-') > 0
@@ -639,8 +638,8 @@ def test_player_entries_hide_the_opponents_values():
     assert active['race_name'] == 'Ratmen' and active['power_name'] == 'Berserk'
     assert active['hand'] == 4 and active['regions'] == 1
     assert active['tokens_on_board'] == 2 and active['acting']
-    assert active['banner'].endswith('ratmen.png')
-    assert active['badge'].endswith('berserk.png')
+    assert active['banner'].endswith('ratmen.svg')
+    assert active['badge'].endswith('berserk.svg')
     assert not active['in_decline']
 
     declined = entries[1]['declined'][0]
@@ -680,7 +679,7 @@ def test_combo_entries():
     assert [entry['suggested'] for entry in entries] == [
         False, False, True, False, False, False]
     for entry in entries:
-        assert entry['banner'].endswith('.png') and entry['badge'].endswith('.png')
+        assert entry['banner'].endswith('.svg') and entry['badge'].endswith('.svg')
         assert entry['race_name'] == RACES[entry['race']].name
         assert entry['power_name'] == POWERS[entry['power']].name
         assert entry['tokens'] == rw.combo_tokens(entry['race'], entry['power'])

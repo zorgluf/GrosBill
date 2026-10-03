@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Fortified badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">FORTIFIED</text>
+<g transform="translate(57.5 54) scale(1)"><path d="M-18 16 V-12 H-12 V-6 H-6 V-12 H0 V-6 H6 V-12 H12 V-6 H18 V-12 H24 V16 Z" transform="translate(-3 0)" fill="#e7d3a8" stroke="#7a6232" stroke-width="2" stroke-linejoin="round"/><path d="M-3 16 V6 Q0 0 3 6 V16 Z" fill="#7a6232"/></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">3</text>
+<g transform="translate(64 92) scale(1)"><path d="M-11 -11 H11 V1.1 Q11 8.8 0 13.2 Q-11 8.8 -11 1.1 Z" fill="#3d7fd1" stroke="#ffffff" stroke-width="1.32"/><text x="0" y="-0.6" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">+1</text></g>
+<g transform="translate(92 92) scale(1)"><polygon points="12,5 5,12 -5,12 -12,5 -12,-5 -5,-12 5,-12 12,-5" fill="#e9c24f" stroke="#a57f14" stroke-width="1.82" stroke-linejoin="round"/><text x="0" y="0.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13.65" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#5a4300">+1</text></g>
+</svg>
