@@ -49,10 +49,11 @@
 
 GrosBill lets you **play board games against AI agents in your browser**, and **train those agents yourself** through self-play reinforcement learning.
 
-Three games are currently implemented:
+Four games are currently implemented:
 * **Flamme Rouge** (`frouge`) — the cycling race game, played as 1 human against 4 AI riders
 * **Schotten Totten** (`stotten`) — the 2-player card game, played head-to-head against the AI
 * **Small World** (`smallw`) — the 3-player conquest game (base game, 14 races and 20 special powers), played as 1 human against 2 AIs; no agent has been trained for it yet, so its opponents currently play random legal moves
+* **Jamaica** (`jamaica`) — the pirate race around the island (3 to 6 players; trained and played at 4: 1 human against 3 AIs); no agent has been trained for it yet either
 
 This project initially started as a fork of the great project [SIMPLE](https://github.com/davidADSP/SIMPLE) made by David Foster [@davidADSP](https://twitter.com/davidADSP) - david@adsp.ai.
 To learn more about this initial project, check out the accompanying [blog post](https://medium.com/applied-data-science/how-to-train-ai-agents-to-play-multiplayer-games-using-self-play-deep-reinforcement-learning-247d0b440717).
@@ -82,7 +83,7 @@ Either:
 * **Docker** (and Docker Compose to make use of the `docker-compose.yml` file) — the easiest way to just play, or
 * **Python 3.12** with `pip` if you prefer to run natively (a virtual environment is recommended)
 
-Pre-trained models for Flamme Rouge and Schotten Totten are shipped in the repo (`app/zoo/pretrained/`), so you can play right away without training anything. Small World has no trained model yet — see [Small World](#small-world) below.
+Pre-trained models for Flamme Rouge and Schotten Totten are shipped in the repo (`app/zoo/pretrained/`), so you can play right away without training anything. Small World and Jamaica have no trained model yet — see [Small World](#small-world) and [Jamaica](#jamaica) below.
 
 ### Installation
 
@@ -134,7 +135,7 @@ Open http://localhost:8080 and pick a game from the home page. Each game loads t
 
 This entrypoint allows you to start training the AI using self-play PPO (the maskable-action variant `MaskablePPO` from [sb3-contrib](https://sb3-contrib.readthedocs.io/)).
 
-You must select the environment to train with `-e` (`frouge`, `stotten`, `stottentr` — a transformer-policy variant of Schotten Totten kept in its own zoo/logs namespace — or `smallw`). For a detailed explanation of the training parameters, please read the help carefully:
+You must select the environment to train with `-e` (`frouge`, `stotten`, `stottentr` — a transformer-policy variant of Schotten Totten kept in its own zoo/logs namespace —, `smallw` or `jamaica`). For a detailed explanation of the training parameters, please read the help carefully:
    ```sh
    python3 train.py --help
    ```
@@ -188,6 +189,24 @@ The environment ships its own test suite (no pytest needed) and a reproducible a
   ```
 
 The board and card images live in `app/environments/smallw/static/` (served at `/smallw_static`) and are committed, so the game runs without the `docs/` sources. The design notes, the rules interpretations and the task log are in `docs/smallw_plan.md`.
+
+#### Jamaica
+
+Jamaica is the pirate race around the island: each round the Captain rolls two dice and places them on *morning* and *evening*, every player secretly picks one of their action cards (load gold / food / gunpowder, move forward / backward), then each ship performs its two actions — paying the ports and sea spaces it lands on, fighting the ships it meets (gunpowder + combat die), plundering the pirate lairs. The game ends when a ship reaches Port Royal; the score is the space reached + the gold in the holds + the treasures. The engine supports 3 to 6 players (the 2-player Ghost Ship variant is not implemented); `-e jamaica` is the 4-player game. The board, the deck, the combat die and the treasures were transcribed from the physical game, and the board is our own drawing.
+
+**No agent has been trained yet**: until a `best_model.zip` exists, the **Jamaica** page of `play.py` uses the untrained `base` policy for the three AIs (uniform over the legal moves). A first training run:
+
+  ```sh
+  cd app
+  python3 train.py -r -e jamaica -t 0.15 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
+  ```
+
+The policy (`app/models/jamaica/`) is a small MLP with a pointer-style action head scoring every legal action from features the engine computes (where a card would land, what it would cost, shortages, battles, treasures...); see its README. Rules, rulings and the transcription table are in `app/environments/jamaica/README.md`, and the environment has its own test suite:
+
+  ```sh
+  cd app
+  python3 -m environments.jamaica.tests.run_all            # 90 tests, ~30 s
+  ```
 
 #### Other training entrypoints (experimental)
 
