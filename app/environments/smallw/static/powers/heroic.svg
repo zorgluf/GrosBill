@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Heroic badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">HEROIC</text>
+<g transform="translate(57.5 54) scale(1)"><path d="M-14 12 V-2 Q-14 -18 0 -18 Q14 -18 14 -2 V12 H6 V2 H-6 V12 Z" fill="#e2b33c" stroke="#8a6410" stroke-width="2" stroke-linejoin="round"/><path d="M-6 -4 H6" stroke="#5a4108" stroke-width="3"/><path d="M-14 -6 Q-26 -14 -22 -24 Q-18 -14 -12 -12 Z M14 -6 Q26 -14 22 -24 Q18 -14 12 -12 Z" fill="#ffffff" stroke="#8a6410" stroke-width="1.2"/></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">5</text>
+<g transform="translate(90 92) scale(1)"><circle r="12" fill="#d32f2f" stroke="#ffffff" stroke-width="1.8"/><rect x="-7.2" y="-2.16" width="14.4" height="4.32" fill="#ffffff"/></g>
+<text x="58" y="99" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="10" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">×2</text>
+</svg>

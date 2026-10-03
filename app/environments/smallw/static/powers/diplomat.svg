@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Diplomat badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">DIPLOMAT</text>
+<g transform="translate(57.5 54) scale(1)"><path d="M-20 4 Q-6 -2 2 -10 Q10 -18 18 -14 L24 -14 L19 -10 Q16 4 2 10 Q-10 14 -20 4 Z" fill="#ffffff" stroke="#7a8a99" stroke-width="1.5" stroke-linejoin="round"/><path d="M-6 0 Q-2 -22 12 -26 Q8 -10 4 0 Z" fill="#eef2f6" stroke="#7a8a99" stroke-width="1.5" stroke-linejoin="round"/><circle cx="16" cy="-12" r="1.4" fill="#2b2b2b"/><path d="M22 -12 Q28 -6 26 0" stroke="#43a047" stroke-width="2" fill="none"/><ellipse cx="27" cy="-4" rx="2" ry="3.5" fill="#43a047"/></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">5</text>
+<text x="74" y="99" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="10" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">ally</text>
+</svg>

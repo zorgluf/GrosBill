@@ -185,7 +185,7 @@ MAP3P: list[RegionDef] = [
 N_REGIONS = 30
 
 #: Board image file name inside `static/`, and its pixel size.
-BOARD_IMAGE = 'board3p.png'
+BOARD_IMAGE = 'board3p.svg'
 BOARD_SIZE = (597, 297)
 
 #: Pixel anchors of the 10 crown icons of the turn track (turn 1 first).

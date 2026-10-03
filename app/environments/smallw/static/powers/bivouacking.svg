@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="115" height="115" viewBox="0 0 115 115"><title>Bivouacking badge</title>
+<rect x="2" y="2" width="111" height="111" rx="12" fill="#fbf6ea" stroke="#8a5a2b" stroke-width="3"/>
+<path d="M2 14 Q2 2 14 2 H101 Q113 2 113 14 V24 H2 Z" fill="#8a5a2b"/>
+<text x="57.5" y="13.5" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">BIVOUACKING</text>
+<g transform="translate(57.5 54) scale(1)"><path d="M-20 14 L0 -18 L20 14 Z" fill="#e0a64a" stroke="#7a5320" stroke-width="2" stroke-linejoin="round"/><path d="M-6 14 L0 2 L6 14 Z" fill="#7a5320"/><path d="M0 -18 V-26 L8 -23 L0 -20" fill="#d32f2f" stroke="#7a5320" stroke-width="1"/></g>
+<circle cx="23" cy="92" r="17" fill="#e8762c" stroke="#ffffff" stroke-width="2.5"/>
+<text x="23" y="93" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">5</text>
+<g transform="translate(90 90) scale(1)"><path d="M-12 -12 H12 V1.2 Q12 9.6 0 14.4 Q-12 9.6 -12 1.2 Z" fill="#3d7fd1" stroke="#ffffff" stroke-width="1.44"/><text x="0" y="-0.6" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#ffffff">+1</text></g>
+<text x="58" y="99" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="10" font-weight="normal" text-anchor="middle" dominant-baseline="central" fill="#2b2b2b">×5</text>
+</svg>

@@ -184,8 +184,8 @@ class RaceDef:
         id: the :class:`RaceId`.
         name: display name ("Amazons").
         key: lowercase snake_case name, matching the static assets
-            ``static/races/<key>.png`` (banner) and
-            ``static/races/<key>_token.jpg`` (token).
+            ``static/races/<key>.svg`` (banner) and
+            ``static/races/<key>_token.svg`` (token).
         banner_value: number printed on the banner = tokens taken when the race
             is picked (before adding the power value).
         total_tokens: tokens of that race in the box. It caps how many can ever
@@ -209,7 +209,7 @@ class PowerDef:
     Attributes:
         id: the :class:`PowerId`.
         name: display name ("Dragon Master").
-        key: lowercase snake_case name, matching ``static/powers/<key>.png``.
+        key: lowercase snake_case name, matching ``static/powers/<key>.svg``.
         value: number printed on the badge = tokens added to the race value
             when the combo is picked.
     """

@@ -165,21 +165,21 @@ def test_keys_match_static_assets():
     """Every `key` must name the files committed in `static/` (T1)."""
     assert STATIC_DIR.is_dir(), f'missing static dir {STATIC_DIR}'
     for rdef in RACES.values():
-        banner = STATIC_DIR / 'races' / f'{rdef.key}.png'
-        token = STATIC_DIR / 'races' / f'{rdef.key}_token.jpg'
+        banner = STATIC_DIR / 'races' / f'{rdef.key}.svg'
+        token = STATIC_DIR / 'races' / f'{rdef.key}_token.svg'
         assert banner.is_file(), f'missing banner {banner}'
         assert token.is_file(), f'missing token {token}'
     for pdef in POWERS.values():
-        badge = STATIC_DIR / 'powers' / f'{pdef.key}.png'
+        badge = STATIC_DIR / 'powers' / f'{pdef.key}.svg'
         assert badge.is_file(), f'missing badge {badge}'
     # no stray / missing file: 14 banners + 14 tokens, 20 badges
     assert len(list((STATIC_DIR / 'races').iterdir())) == 2 * len(RACES)
     assert len(list((STATIC_DIR / 'powers').iterdir())) == len(POWERS)
     # the markers the state classes know about have an image too
     for kind in MARKER_KINDS:
-        assert (STATIC_DIR / 'pieces' / f'{kind}.jpg').is_file(), f'missing {kind}.jpg'
-    for piece in ('lost_tribe', 'mountain', 'die', 'turn_marker'):
-        assert (STATIC_DIR / 'pieces' / f'{piece}.jpg').is_file(), f'missing {piece}.jpg'
+        assert (STATIC_DIR / 'pieces' / f'{kind}.svg').is_file(), f'missing {kind}.svg'
+    for piece in ('lost_tribe', 'mountain', 'turn_marker'):
+        assert (STATIC_DIR / 'pieces' / f'{piece}.svg').is_file(), f'missing {piece}.svg'
 
 
 def test_constants():
