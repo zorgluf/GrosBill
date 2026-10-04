@@ -43,8 +43,8 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
 
         obs, _, done, _ , info = env.step(action)
         if info['next_step_no_action']:
-            env.render(callback=lambda a: play_step(env, agents, pov_player, a), pov_player = pov_player, suggest=suggest)
-            _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a))
+            env.render(callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest), pov_player = pov_player)
+            _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest))
             return
   
     env.render(pov_player = pov_player)

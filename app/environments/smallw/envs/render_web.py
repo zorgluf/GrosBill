@@ -1275,7 +1275,14 @@ class RenderWeb:
             card.on('click', lambda a=entry['action']: self._send(a))
             if not entry['legal']:
                 card.style('opacity: 0.55;')
+            if entry['suggested']:
+                card.style('position: relative; outline: 3px solid #fdff00; '
+                           'box-shadow: 0 0 6px 2px #605a00;')
             with card:
+                if entry['suggested']:
+                    _element_star().style(
+                        'position: absolute; top: -10px; right: -10px; '
+                        'width: 30px; height: 28px; z-index: 1;')
                 with ui.row().classes('no-wrap items-center gap-1 q-pa-xs') \
                         .style('position: relative;'):
                     with ui.image(entry['badge']).style(
@@ -1286,10 +1293,6 @@ class RenderWeb:
                             f'width: {COMBO_BANNER_PX}px; flex: 0 0 auto;'):
                         _rules_tooltip(entry['race_title'],
                                        entry['race_rules'])
-                    if entry['suggested']:
-                        _element_star().style(
-                            'position: absolute; top: 0; left: 0; '
-                            'width: 22px;')
                 ui.label(f'{entry["power_name"]} {entry["race_name"]}'
                          ).classes('text-xs font-bold q-px-xs')
                 with ui.row().classes('items-center justify-between w-full '
