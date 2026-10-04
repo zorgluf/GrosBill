@@ -5,17 +5,9 @@ import shutil
 import config
 from utils.agents import Agent
 from utils.files import load_model
-from utils.register import get_trajectory_path
-from utils.experts import load_trajectories, save_trajectories
 from typing import List, Tuple
 from utils.env import GBEnv
 from dataclasses import dataclass
-
-from imitation.data.types import Trajectory
-from imitation.data import serialize
-from imitation.data.huggingface_utils import trajectories_to_dataset
-from imitation.util.util import parse_path
-import datasets
 
 @ui.refreshable
 def _gui_generic_buttons(env: GBEnv, callback = None):
@@ -27,9 +19,7 @@ def _gui_generic_buttons(env: GBEnv, callback = None):
         dialog.open()
 
 
-def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = None, choose_best_action = True, suggest = False, moves: List = None):
-    assert moves is not None, "moves must be specified"
-
+def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = None, choose_best_action = True, suggest = False):
     done = False
     while not done:
         if env.current_player == -1:
@@ -39,11 +29,11 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
             if current_player.name == 'human':
                 if human_action == None:
                     env.render(
-                        callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest, moves=moves),   
+                        callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest),   
                         pov_player = pov_player,
                         suggested_action = agents[-1].choose_action(env, choose_best_action=True) if suggest else None
                     )
-                    _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest, moves=moves))
+                    _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest))
                     return
                 else:
                     action = human_action
@@ -52,26 +42,13 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
                 action = current_player.choose_action(env, choose_best_action = choose_best_action)
 
         obs, _, done, _ , info = env.step(action)
-        if (type(action) != int or action != -1) and current_player.name == 'human':
-            #record for trajectory
-            moves[0].append(obs)
-            moves[1].append(action)
         if info['next_step_no_action']:
-            env.render(callback=lambda a: play_step(env, agents, pov_player, a, moves=moves), pov_player = pov_player, suggest=suggest, moves=moves)
-            _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, moves=moves))
+            env.render(callback=lambda a: play_step(env, agents, pov_player, a), pov_player = pov_player, suggest=suggest)
+            _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a))
             return
   
     env.render(pov_player = pov_player)
     _gui_generic_buttons.refresh(env)
-    if app.storage.user["options"].record:
-        save_trajectory(moves[0], moves[1], env.name)
-
-def save_trajectory(observations, actions, env_name):
-    #save trajectory
-    traj = Trajectory(obs=observations, acts=actions, infos=None, terminal=True)
-    trajectories = load_trajectories(env_name)
-    trajectories.append(traj)
-    save_trajectories(trajectories, env_name)
 
 def load_agents(env, agent_names, device):
 
@@ -107,7 +84,6 @@ def trained_or_base(env_name, name='best_model'):
 @dataclass
 class PlayOptions:
     suggest = False
-    record = False
     jamaica_players = 4
 
 def create_game_page(env_class, env_name, agents_names, agent_load_names):
@@ -118,14 +94,14 @@ def create_game_page(env_class, env_name, agents_names, agent_load_names):
     env = env_class(player_names=agents_names)
     # set seed
     seed = random.randint(0,1000)
-    obs, _ = env.reset(seed = seed)
+    env.reset(seed = seed)
     # load agents
     agents = load_agents(env, agent_load_names, "cpu")
     # start gui
     env.nicegui_page()
     _gui_generic_buttons(env,)
     # play game
-    play_step(env, agents, pov_player=agents_names.index('human'), suggest=app.storage.user["options"].suggest, moves=[[obs],[]])
+    play_step(env, agents, pov_player=agents_names.index('human'), suggest=app.storage.user["options"].suggest)
 
 @ui.page('/frouge')
 def frouge_page():
@@ -174,24 +150,6 @@ def index():
     with ui.row():
         ui.label('Suggest action:')
         ui.toggle({True:"Yes",False:"No"}).bind_value(app.storage.user["options"], 'suggest')
-        ui.toggle({True:"Record for future learning",False:"No"}).bind_value(app.storage.user["options"], 'record')
-    
-    # Display number of trajectories recorded for each game
-    with ui.row():
-        frouge_traj_count = count_trajectories('frouge')
-        stotten_traj_count = count_trajectories('stotten')
-        smallw_traj_count = count_trajectories('smallw')
-        jamaica_traj_count = count_trajectories('jamaica')
-        ui.label(f'Flamme Rouge trajectories: {frouge_traj_count}')
-        ui.label(f'Schotten Totten trajectories: {stotten_traj_count}')
-        ui.label(f'Small World trajectories: {smallw_traj_count}')
-        ui.label(f'Jamaica trajectories: {jamaica_traj_count}')
-
-
-def count_trajectories(env_name):
-    """Count the number of trajectories recorded for a given environment."""
-    trajectories = load_trajectories(env_name)
-    return len(trajectories)
 
 if __name__ in {"__main__", "__mp_main__"}:
 

@@ -64,7 +64,7 @@ The main modifications are:
 * Support CUDA devices for training
 * Migration from TensorFlow to PyTorch ([Stable Baselines3](https://stable-baselines3.readthedocs.io/en/master/index.html) / [sb3-contrib](https://sb3-contrib.readthedocs.io/) MaskablePPO)
 * A web based rendering mode ([NiceGUI](https://nicegui.io/)) to play the games from a browser
-* Extra training modes: imitation learning from your own recorded games, MCTS-based training and AlphaZero-style refinement
+* Extra training modes: MCTS-based training and AlphaZero-style refinement
 
 This guide explains how to get started with the repo, add new custom environments and tune the hyperparameters of the system.
 
@@ -127,9 +127,8 @@ This entrypoint launches a web server on port 8080 as a GUI interface to play ag
    python3 play.py
    ```
 
-Open http://localhost:8080 and pick a game from the home page. Each game loads the current `best_model.zip` from `app/zoo/<env>/` as opponent (falling back on the pre-trained ones). From the home page you can also toggle two options:
+Open http://localhost:8080 and pick a game from the home page. Each game loads the current `best_model.zip` from `app/zoo/<env>/` as opponent (falling back on the pre-trained ones). From the home page you can also toggle:
 * **Suggest action** — the AI shows you the move it would play in your position, useful to learn a game or evaluate the agent.
-* **Record for future learning** — your finished games are saved as trajectories (in `app/zoo/trajectories/`) that can later be fed to `train_expert.py` for imitation learning. The home page shows how many trajectories have been recorded for each game.
 
 #### `train.py`
 
@@ -211,7 +210,6 @@ The policy (`app/models/jamaica/`) is a small MLP with a pointer-style action he
 #### Other training entrypoints (experimental)
 
 Beyond plain self-play PPO, the repo provides some more experimental trainers (all share most of `train.py`'s arguments — see their `--help`):
-* `train_expert.py` — imitation learning: bootstraps a model by behavioral cloning from the trajectories you recorded through the play UI, then continues with self-play PPO.
 * `train_mcts.py` — MCTS-guided training with determinization for hidden-information games.
 * `train_alphazero_refine.py` — AlphaZero-style refinement of an existing model.
 * `train_hyper.py` — a simple hyperparameter grid-search launcher; results are compared through Tensorboard.
