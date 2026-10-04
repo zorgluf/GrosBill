@@ -8,6 +8,9 @@ from utils.files import load_model
 from typing import List, Tuple
 from utils.env import GBEnv
 from dataclasses import dataclass
+from pathlib import Path
+
+app.add_static_files('/static', Path(__file__).parent / 'static')
 
 @ui.refreshable
 def _gui_generic_buttons(env: GBEnv, callback = None):
@@ -136,20 +139,49 @@ def jamaica_page():
     create_game_page(JamaicaEnv, 'jamaica', agents_names, ['human'] + [model] * (n_players - 1))
 
 
+GAMES = [
+    # (page, env name, title, players, blurb)
+    (frouge_page, 'frouge', 'Flamme Rouge', '5 players', 'Cycling race: pick energy cards for your rouleur and sprinter, draft behind the pack, beware of exhaustion.'),
+    (stotten_page, 'stotten', 'Schotten Totten', '2 players', 'Claim the stones of the border by laying the best three-card formations on your side.'),
+    (smallw_page, 'smallw', 'Small World', '3 players', 'Pick a race and power combo, conquer regions, go in decline and pick a fresh race.'),
+    (jamaica_page, 'jamaica', 'Jamaica', '3-6 players', 'Pirate race around the island: load food, gold and powder, fight for the treasures.'),
+]
+
+def _game_card(page, env_name, title, players, blurb):
+    trained = trained_or_base(env_name) != 'base'
+    with ui.card().tight().classes('w-full hover:shadow-xl transition-shadow'):
+        with ui.link(target=page).classes('w-full no-underline text-inherit'):
+            ui.image(f'/static/screenshots/{env_name}.webp').props('ratio=1.6').classes('w-full')
+            with ui.column().classes('gap-1 px-4 pt-3'):
+                ui.label(title).classes('text-xl font-semibold text-gray-900')
+                ui.label(blurb).classes('text-sm text-gray-600')
+        with ui.row().classes('w-full items-center gap-2 px-4 pb-4 pt-2'):
+            ui.badge(players, color='blue-grey-1', text_color='blue-grey-9').classes('px-2 py-1')
+            ui.badge('Trained AI' if trained else 'Untrained AI',
+                     color='green-1' if trained else 'orange-1',
+                     text_color='green-9' if trained else 'orange-9').classes('px-2 py-1')
+            ui.space()
+            if env_name == 'jamaica':
+                ui.select({n: f'{n} players' for n in range(3, 7)}).props('dense outlined').bind_value(app.storage.user["options"], 'jamaica_players')
+            ui.button('Play', icon='play_arrow', on_click=lambda: ui.navigate.to(page)).props('unelevated')
+
 @ui.page('/')
 def index():
     #init options on user scope
     app.storage.user["options"] = PlayOptions()
 
-    ui.link('Flamme Rouge', frouge_page)
-    ui.link('Schotten Totten', stotten_page)
-    ui.link('Small World', smallw_page)
-    with ui.row().classes('items-center'):
-        ui.link('Jamaica', jamaica_page)
-        ui.select({n: f'{n} players' for n in range(3, 7)}).bind_value(app.storage.user["options"], 'jamaica_players')
-    with ui.row():
-        ui.label('Suggest action:')
-        ui.toggle({True:"Yes",False:"No"}).bind_value(app.storage.user["options"], 'suggest')
+    ui.query('body').classes('bg-slate-100')
+    with ui.column().classes('w-full max-w-6xl mx-auto p-6 gap-6'):
+        with ui.row().classes('w-full items-center gap-4'):
+            ui.image('/static/logo.png').classes('w-16 h-16')
+            with ui.column().classes('gap-0'):
+                ui.label('GrosBill').classes('text-3xl font-bold text-gray-900')
+                ui.label('Play board games against self-play trained agents').classes('text-gray-600')
+            ui.space()
+            ui.switch('Suggest actions').bind_value(app.storage.user["options"], 'suggest')
+        with ui.grid().classes('w-full grid-cols-1 md:grid-cols-2 gap-6'):
+            for game in GAMES:
+                _game_card(*game)
 
 if __name__ in {"__main__", "__mp_main__"}:
 
