@@ -7,7 +7,12 @@ Implemented as described below; nothing has been trained with it yet.
 ![smallw policy architecture](architecture.svg)
 
 `architecture.svg` is generated from the live network (sizes, parameter counts, the real
-region-distance matrix): `python3 -m models.smallw.draw_architecture` from `app/`.
+region-distance matrix): `python3 -m models.smallw.draw_architecture` from `app/`. It shows
+the 3-player network; the same `CustomPolicy` serves every player count (`smallw2`,
+`smallw`, `smallw4`, `smallw5`): it reads the number of regions R from the observation
+space, recovers the board from it (every board has a different region count) and sizes the
+region tokens, the distance bias and the four region action ranges accordingly. One
+network is trained per player count, in its own `zoo/<env>/`.
 
 ## Prerequisites on the environment side
 
@@ -24,7 +29,7 @@ These cap performance whatever the network, so they come first.
    0 = not attackable), and per player (`players` column 13) the coins they would score if
    their turn ended now. Without them the network would have to re-learn the rules engine from sparse
    rewards.
-3. **The action mask as an input.** The 133-entry legality mask is added to the
+3. **The action mask as an input.** The legality mask (133 entries with 3 players) is added to the
    observation (`mask` key); its four region slices become 4 bits per region token.
 
 ## Architecture: entity transformer + map-distance bias + pointer heads
@@ -33,7 +38,7 @@ These cap performance whatever the network, so they come first.
 
 | Token | Built from |
 |---|---|
-| **30 regions** | Σ embeddings: terrain, owner code (12), race (shared table **R**), conquered-this-turn, region id (learned position) + `Linear` over the flags (mine / magic / cavern / border / coastal / lair / fortress / hole / hero / dragon), the counts (tokens, encampments, attack cost — as `log1p(x)` and an embedding of `min(x, 12)`) and the 4 legality bits of the region |
+| **R regions** (23 / 30 / 39 / 48 for 2 / 3 / 4 / 5 players) | Σ embeddings: terrain, owner code (12), race (shared table **R**), conquered-this-turn, region id (learned position) + `Linear` over the flags (mine / magic / cavern / border / coastal / lair / fortress / hole / hero / dragon), the counts (tokens, encampments, attack cost — as `log1p(x)` and an embedding of `min(x, 12)`) and the 4 legality bits of the region |
 | **5 players** | relative-seat embedding + R[active] + P[power] (shared table **P**) + R[declined] + R[spirit] + `Linear`(coins, tokens in hand / tray, region counts, ally, must-first-conquest, projected income). Absent rows are masked (`key_padding_mask`) |
 | **6 combos** | slot embedding (slot = cost) + **R[race] + P[power] + MLP(R ‖ P)** + coins |
 | **1 context (CLS)** | phase emb (13) + turn emb + die / dragon / fortress / sorcerer flags, tokens left to place, placements left |
@@ -47,14 +52,15 @@ same concept. The race×power MLP captures the non-additive combos
 * 4 pre-LN layers, `d_model = 128`, 4 heads, FFN 256, no dropout (the choices that work
   in `stottentr`).
 * **Per-head attention bias learned from the shortest-path distance between two
-  regions** (a 30×30 matrix precomputed from `map3p.ADJACENCY`, stored as a buffer),
+  regions** (an R×R matrix precomputed from the board's adjacency, `maps.py`, stored as a buffer),
   plus a learned bias between a region and the player token that owns it. Unlike a GNN
   limited to k hops, full attention keeps global reasoning ("this combo is strong
   because opponent 2 is spread thin over there") while knowing the topology.
 * Later option: Laplacian eigenvectors as positional encoding instead of the learned
-  region id, to generalise to the 2 / 4 / 5-player maps.
+  region id, so that one network could play the 2 / 3 / 4 / 5-player maps (today each
+  player count has its own network and its own learned region ids).
 
-### 3. Policy head: pointers mapped onto the 133 actions
+### 3. Policy head: pointers mapped onto the actions (133 with 3 players)
 
 Like `stottentr`'s `PointerActionNet`, logits are built directly from the output tokens:
 
@@ -78,8 +84,8 @@ policy in ~0.4 s on CPU.
 
 * **Entity tokens**: the game *is* a set of interacting entities; a flat 579-float
   vector throws that structure away.
-* **Pointer heads**: "is this region worth it" is shared across 30 regions × 4 action
-  types — every gradient signal is reused 30×.
+* **Pointer heads**: "is this region worth it" is shared across R regions × 4 action
+  types — every gradient signal is reused R× (30× with 3 players).
 * **Distance bias**: adjacency is the conquest rule; it is encoded directly.
 * **Shared R / P**: 280 possible combos, only 34 embeddings to learn.
 

@@ -2,6 +2,7 @@ import copy
 import os
 import numpy as np
 import random
+from collections import deque
 
 import config
 from utils.files import load_model, load_all_models, get_best_model_name
@@ -26,6 +27,10 @@ def selfplay_wrapper(env: GBEnv):
                 self.opponent_models = load_all_models(self, device)
             self.best_model_name = get_best_model_name(self.name)
             self.logger = logger
+            # (player count, learner's return) of the last finished games: the eval
+            # callback reports the reward per count of the games that vary it (jamaica)
+            self.episode_history = deque(maxlen=4096)
+            self._episode_return = 0.0
 
         def __deepcopy__(self, memo):
             """Deep-copy the game state but share the (read-only) opponent models.
@@ -40,6 +45,9 @@ def selfplay_wrapper(env: GBEnv):
                     setattr(new, k, v)
                 elif k == 'agents':
                     setattr(new, k, list(v))
+                elif k == 'episode_history':
+                    # a search snapshot is not a played game: start empty, copy nothing
+                    setattr(new, k, deque(maxlen=v.maxlen))
                 else:
                     setattr(new, k, copy.deepcopy(v, memo))
             return new
@@ -84,6 +92,7 @@ def selfplay_wrapper(env: GBEnv):
 
         def reset(self, seed = None, **kwargs):
             _, info = super(SelfPlayEnv, self).reset(seed = seed)
+            self._episode_return = 0.0
             self.setup_opponents()
 
             if self.current_player != self.agent_player_num:   
@@ -134,6 +143,9 @@ def selfplay_wrapper(env: GBEnv):
                 if package[0] is not None:
                     observation, reward, done, truncated, info = package
                     agent_reward += reward
+            self._episode_return += agent_reward
+            if done:
+                self.episode_history.append((self.n_players, self._episode_return))
             # On `done` we return the genuine terminal observation and let the surrounding
             # VecEnv (SubprocVecEnv / DummyVecEnv) perform the reset and store
             # info["terminal_observation"]. Resetting here caused a double-reset and

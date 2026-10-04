@@ -1143,11 +1143,11 @@ def test_redeterminize_keeps_the_public_state():
 
 
 def test_unsupported_player_counts_are_explicit():
-    """Only the 3-player board exists so far; the others must say so."""
-    for n in (2, 4, 5):
+    """Small World is played by 2 to 5; the other counts must say so."""
+    for n in (1, 6):
         try:
             SmallWorldEnv(n)
-        except NotImplementedError:
+        except ValueError:
             pass
         else:
             raise AssertionError(f'SmallWorldEnv({n}) should raise')

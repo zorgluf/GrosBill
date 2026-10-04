@@ -32,6 +32,9 @@ from enum import IntEnum
 MIN_PLAYERS = 3
 MAX_PLAYERS = 6
 DEFAULT_PLAYERS = 4
+#: every supported player count: one network plays them all (the spaces are sized
+#: for MAX_PLAYERS and the observation carries the count)
+PLAYER_COUNTS = tuple(range(MIN_PLAYERS, MAX_PLAYERS + 1))
 MAX_ROUNDS = 50            #: round cap, then normal scoring
 N_HOLDS = 5                #: regular holds per ship
 N_SLOTS = N_HOLDS + 1      #: + the 6th Hold treasure card

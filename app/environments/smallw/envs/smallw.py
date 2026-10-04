@@ -14,8 +14,12 @@ structural pieces wired here are the ones that need engine support:
 * the attack-only tokens of `RaceDef.attack_bonus_tokens` (through
   `redeployable_tokens`) and the Spirit flag `RaceInPlay.is_spirit`.
 
-Action space (`Discrete(133)`, laid out for 5 players and 30 regions)
----------------------------------------------------------------------
+Action space (`Discrete(8 + 4R + 5)` for a board of R regions)
+--------------------------------------------------------------
+Every player count has its own board (`maps.py`), so its own `ActionLayout`
+(`env.layout`): R = 23 / 30 / 39 / 48 regions for 2 / 3 / 4 / 5 players, i.e.
+105 / 133 / 169 / 205 actions. With 3 players (R = 30):
+
 =========  ==========================================================
 0-5        `A_COMBO + i`: pick the visible combo `i` (costs `i` coins)
 6          `A_DECLINE`: go in decline (start of turn, or STOUT_DECLINE)
@@ -29,11 +33,12 @@ Action space (`Discrete(133)`, laid out for 5 players and 30 regions)
            from the acting player — the observation is egocentric too)
 =========  ==========================================================
 
-`index` is the 0-based region index (`region.id - 1`).
+`index` is the 0-based region index (`region.id - 1`). The module-level
+`A_*` constants and `*_action` helpers are the 3-player layout (`LAYOUT_3P`).
 
 Observation (`gym.spaces.Dict` of int64 boxes)
 ----------------------------------------------
-`regions` (30, 16) — one row per region, columns:
+`regions` (R, 17) — one row per region, columns:
 
 ===  ==========================================================
 0    terrain id (`Terrain`, 0..5)
@@ -105,8 +110,8 @@ top of the column).
 15     number of visible combos
 =====  ==========================================================
 
-`mask` (133,) — `action_masks()` as 0/1, so the network sees the legal targets
-(all zeros outside a decision point).
+`mask` (N_ACTIONS,) — `action_masks()` as 0/1, so the network sees the legal
+targets (all zeros outside a decision point).
 
 Reward (plan 3.7, zero-sum)
 ---------------------------
@@ -150,10 +155,12 @@ from .classes import (
     turns_for,
 )
 from .hooks import get_power_hooks, get_race_hooks
+from .maps import MAPS
 from .render_web import RenderWeb
 
 __all__ = [
-    'SmallWorldEnv', 'Phase',
+    'SmallWorldEnv', 'SmallWorld2Env', 'SmallWorld4Env', 'SmallWorld5Env',
+    'Phase', 'ActionLayout', 'layout_for', 'LAYOUT_3P', 'env_name_for',
     'A_COMBO', 'A_DECLINE', 'A_PASS', 'A_REGION', 'A_REGION_ALL',
     'A_SORCERER', 'A_DRAGON', 'A_ALLY', 'N_ACTIONS', 'MAX_REGIONS',
     'region_action', 'region_all_action', 'sorcerer_action', 'dragon_action',
@@ -165,19 +172,10 @@ __all__ = [
 # Action space layout
 # --------------------------------------------------------------------------- #
 
-#: Region slots reserved in the action space and in the observation (the
-#: 3-player board has 30 regions; a bigger board would need a bigger layout).
-MAX_REGIONS = 30
-
 A_COMBO = 0          #: 0..5   pick visible combo i
 A_DECLINE = 6        #: go in decline
 A_PASS = 7           #: end conquests / skip / no ally
-A_REGION = 8         #: 8..37   region index (conquer / abandon / place)
-A_REGION_ALL = 38    #: 38..67  region index (redeploy everything there)
-A_SORCERER = 68      #: 68..97  region index (Sorcerer substitution)
-A_DRAGON = 98        #: 98..127 region index (Dragon Master conquest)
-A_ALLY = 128         #: 128..132 relative seat offset (Diplomat)
-N_ACTIONS = 133      #: size of the action space
+A_REGION = 8         #: R region slots (conquer / abandon / place)
 
 KIND_COMBO = 'combo'
 KIND_DECLINE = 'decline'
@@ -189,60 +187,114 @@ KIND_DRAGON = 'dragon'
 KIND_ALLY = 'ally'
 
 
-def region_action(index: int) -> int:
-    """Action that targets the region at 0-based `index` (conquer / place)."""
-    return A_REGION + int(index)
+class ActionLayout:
+    """The action ranges of a board of `n_regions` regions (module docstring).
 
-
-def region_all_action(index: int) -> int:
-    """Action that redeploys every remaining token on region `index`."""
-    return A_REGION_ALL + int(index)
-
-
-def sorcerer_action(index: int) -> int:
-    """Sorcerer substitution action on region `index`."""
-    return A_SORCERER + int(index)
-
-
-def dragon_action(index: int) -> int:
-    """Dragon Master conquest action on region `index`."""
-    return A_DRAGON + int(index)
-
-
-def ally_action(offset: int) -> int:
-    """Diplomat action choosing as ally the seat at relative `offset` (1..4)
-    from the acting player."""
-    return A_ALLY + int(offset)
-
-
-def action_kind(action: int) -> tuple[str, int]:
-    """Split an action into ``(kind, argument)``.
-
-    Kinds: ``'combo'`` (combo index), ``'decline'``, ``'pass'`` (argument 0),
-    ``'region'`` / ``'region_all'`` / ``'sorcerer'`` / ``'dragon'`` (0-based
-    region index) and ``'ally'`` (relative seat offset).
-
-    Raises:
-        ValueError: if `action` is outside the action space.
+    Combos, decline, pass and the first region range start at the same index
+    whatever the board; the three other region ranges and the Diplomat slots
+    follow, so `N_ACTIONS = 8 + 4 * n_regions + MAX_PLAYERS`. Immutable (a deep
+    copy returns the object itself).
     """
-    a = int(action)
-    if A_COMBO <= a < A_DECLINE:
-        return KIND_COMBO, a - A_COMBO
-    if a == A_DECLINE:
-        return KIND_DECLINE, 0
-    if a == A_PASS:
-        return KIND_PASS, 0
-    if A_REGION <= a < A_REGION_ALL:
-        return KIND_REGION, a - A_REGION
-    if A_REGION_ALL <= a < A_SORCERER:
-        return KIND_REGION_ALL, a - A_REGION_ALL
-    if A_SORCERER <= a < A_DRAGON:
-        return KIND_SORCERER, a - A_SORCERER
-    if A_DRAGON <= a < A_ALLY:
-        return KIND_DRAGON, a - A_DRAGON
-    if A_ALLY <= a < N_ACTIONS:
-        return KIND_ALLY, a - A_ALLY
-    raise ValueError(f'action {action} outside the smallw action space (0..{N_ACTIONS - 1})')
+
+    __slots__ = ('n_regions', 'A_REGION_ALL', 'A_SORCERER', 'A_DRAGON', 'A_ALLY', 'N_ACTIONS')
+
+    A_COMBO = A_COMBO
+    A_DECLINE = A_DECLINE
+    A_PASS = A_PASS
+    A_REGION = A_REGION
+
+    def __init__(self, n_regions: int):
+        self.n_regions = n_regions
+        self.A_REGION_ALL = A_REGION + n_regions       #: redeploy everything there
+        self.A_SORCERER = A_REGION + 2 * n_regions     #: Sorcerer substitution
+        self.A_DRAGON = A_REGION + 3 * n_regions       #: Dragon Master conquest
+        self.A_ALLY = A_REGION + 4 * n_regions         #: relative seat offset (Diplomat)
+        self.N_ACTIONS = self.A_ALLY + MAX_PLAYERS     #: size of the action space
+
+    def __deepcopy__(self, memo) -> 'ActionLayout':
+        return self
+
+    def __repr__(self) -> str:
+        return f'ActionLayout({self.n_regions} regions, {self.N_ACTIONS} actions)'
+
+    def region_action(self, index: int) -> int:
+        """Action that targets the region at 0-based `index` (conquer / place)."""
+        return A_REGION + int(index)
+
+    def region_all_action(self, index: int) -> int:
+        """Action that redeploys every remaining token on region `index`."""
+        return self.A_REGION_ALL + int(index)
+
+    def sorcerer_action(self, index: int) -> int:
+        """Sorcerer substitution action on region `index`."""
+        return self.A_SORCERER + int(index)
+
+    def dragon_action(self, index: int) -> int:
+        """Dragon Master conquest action on region `index`."""
+        return self.A_DRAGON + int(index)
+
+    def ally_action(self, offset: int) -> int:
+        """Diplomat action choosing as ally the seat at relative `offset`
+        (1..4) from the acting player."""
+        return self.A_ALLY + int(offset)
+
+    def action_kind(self, action: int) -> tuple[str, int]:
+        """Split an action into ``(kind, argument)``.
+
+        Kinds: ``'combo'`` (combo index), ``'decline'``, ``'pass'`` (argument
+        0), ``'region'`` / ``'region_all'`` / ``'sorcerer'`` / ``'dragon'``
+        (0-based region index) and ``'ally'`` (relative seat offset).
+
+        Raises:
+            ValueError: if `action` is outside the action space.
+        """
+        a = int(action)
+        if A_COMBO <= a < A_DECLINE:
+            return KIND_COMBO, a - A_COMBO
+        if a == A_DECLINE:
+            return KIND_DECLINE, 0
+        if a == A_PASS:
+            return KIND_PASS, 0
+        if A_REGION <= a < self.A_REGION_ALL:
+            return KIND_REGION, a - A_REGION
+        if self.A_REGION_ALL <= a < self.A_SORCERER:
+            return KIND_REGION_ALL, a - self.A_REGION_ALL
+        if self.A_SORCERER <= a < self.A_DRAGON:
+            return KIND_SORCERER, a - self.A_SORCERER
+        if self.A_DRAGON <= a < self.A_ALLY:
+            return KIND_DRAGON, a - self.A_DRAGON
+        if self.A_ALLY <= a < self.N_ACTIONS:
+            return KIND_ALLY, a - self.A_ALLY
+        raise ValueError(f'action {action} outside the smallw action space '
+                         f'(0..{self.N_ACTIONS - 1})')
+
+
+def layout_for(n_players: int) -> ActionLayout:
+    """The action layout of the board played with `n_players`."""
+    return _LAYOUTS[n_players]
+
+
+_LAYOUTS: dict[int, ActionLayout] = {n: ActionLayout(m.n_regions) for n, m in MAPS.items()}
+
+#: The layout of the 3-player board (`Discrete(133)`). The module-level
+#: constants and helpers below are this layout, kept for the 3-player code and
+#: tests; code that runs on any board uses `env.layout` instead.
+LAYOUT_3P: ActionLayout = _LAYOUTS[3]
+
+#: Region slots of the 3-player layout.
+MAX_REGIONS = LAYOUT_3P.n_regions
+A_REGION_ALL = LAYOUT_3P.A_REGION_ALL    #: 38..67  (3 players)
+A_SORCERER = LAYOUT_3P.A_SORCERER        #: 68..97  (3 players)
+A_DRAGON = LAYOUT_3P.A_DRAGON            #: 98..127 (3 players)
+A_ALLY = LAYOUT_3P.A_ALLY                #: 128..132 (3 players)
+N_ACTIONS = LAYOUT_3P.N_ACTIONS          #: 133 (3 players)
+
+region_action = LAYOUT_3P.region_action
+region_all_action = LAYOUT_3P.region_all_action
+sorcerer_action = LAYOUT_3P.sorcerer_action
+dragon_action = LAYOUT_3P.dragon_action
+ally_action = LAYOUT_3P.ally_action
+action_kind = LAYOUT_3P.action_kind
 
 
 # --------------------------------------------------------------------------- #
@@ -320,10 +372,26 @@ _GLOBAL_HIGH = np.array(
 )
 
 
+def env_name_for(n_players: int) -> str:
+    """Environment (and model zoo) name of the `n_players` game: `smallw` for
+    3 players, `smallw2` / `smallw4` / `smallw5` for the others."""
+    return 'smallw' if n_players == 3 else f'smallw{n_players}'
+
+
 class SmallWorldEnv(GBEnv):
-    """Small World, base game, 3 players (2/4/5 need their map table first)."""
+    """Small World, base game, 2 to 5 players (3 by default).
+
+    Every player count has its own board, hence its own action / observation
+    sizes (`layout`) and its own name (`env_name_for`): one network per player
+    count, trained in its own `zoo/<name>/`. `SmallWorld2Env`,
+    `SmallWorld4Env` and `SmallWorld5Env` only change the default count, so
+    that the training scripts can build them without arguments.
+    """
 
     metadata = {'render_modes': ['human_web']}
+
+    #: Player count used when neither `n_players` nor `player_names` is given.
+    DEFAULT_PLAYERS = 3
 
     #: The rules hide the coin *values* of the other players (only the number
     #: of tokens is public — `players` column 12, and it is what column 1 holds
@@ -335,26 +403,27 @@ class SmallWorldEnv(GBEnv):
     #: a whole game stays well below the terminal magnitudes.
     SHAPING_SCALE = 200.0
 
-    def __init__(self, n_players: int = 3, player_names: list[str] = None,
+    def __init__(self, n_players: int | None = None, player_names: list[str] = None,
                  pause_between_turns: bool = True):
-        super(SmallWorldEnv, self).__init__('smallw', n_players, player_names)
+        if n_players is None:
+            n_players = len(player_names) if player_names else self.DEFAULT_PLAYERS
+        if player_names is not None and len(player_names) != n_players:
+            raise ValueError(f'{len(player_names)} player names for {n_players} players')
+        super(SmallWorldEnv, self).__init__(env_name_for(n_players), n_players, player_names)
         #: stop in TURN_PAUSE after each player's turn (a no-action step, see
         #: `Phase.TURN_PAUSE`); the engine unit tests turn it off
         self.pause_between_turns = pause_between_turns
 
-        # raises NotImplementedError for a player count whose board is missing
+        # raises ValueError for a player count Small World is not played with
         self.n_regions = len(map_for(n_players))
-        if self.n_regions > MAX_REGIONS:
-            raise NotImplementedError(
-                f'the action space is laid out for {MAX_REGIONS} regions, '
-                f'the {n_players}-player map has {self.n_regions}'
-            )
         self.turns_total = turns_for(n_players)
+        #: the action ranges of this board (`Discrete(133)` for 3 players)
+        self.layout: ActionLayout = layout_for(n_players)
 
         self.observation_space = gym.spaces.Dict({
             'regions': gym.spaces.Box(
-                low=0, high=np.tile(_REGION_HIGH, (MAX_REGIONS, 1)),
-                shape=(MAX_REGIONS, REGION_COLS), dtype=np.int64),
+                low=0, high=np.tile(_REGION_HIGH, (self.n_regions, 1)),
+                shape=(self.n_regions, REGION_COLS), dtype=np.int64),
             'players': gym.spaces.Box(
                 low=0, high=np.tile(_PLAYER_HIGH, (MAX_PLAYERS, 1)),
                 shape=(MAX_PLAYERS, PLAYER_COLS), dtype=np.int64),
@@ -364,9 +433,9 @@ class SmallWorldEnv(GBEnv):
             'global': gym.spaces.Box(
                 low=0, high=_GLOBAL_HIGH, shape=(GLOBAL_COLS,), dtype=np.int64),
             'mask': gym.spaces.Box(
-                low=0, high=1, shape=(N_ACTIONS,), dtype=np.int64),
+                low=0, high=1, shape=(self.layout.N_ACTIONS,), dtype=np.int64),
         })
-        self.action_space = gym.spaces.Discrete(N_ACTIONS)
+        self.action_space = gym.spaces.Discrete(self.layout.N_ACTIONS)
 
         # -- state, all (re)built by reset() -------------------------------- #
         self.board: Board = None
@@ -614,9 +683,11 @@ class SmallWorldEnv(GBEnv):
     # ------------------------------------------------------------------ #
 
     def action_masks(self):
-        """Boolean legality mask over the 133 actions (all-False only once the
-        game is over and in TURN_PAUSE, where the only move is ``step(-1)``)."""
-        mask = np.zeros(N_ACTIONS, dtype=bool)
+        """Boolean legality mask over `layout.N_ACTIONS` actions (all-False only
+        once the game is over and in TURN_PAUSE, where the only move is
+        ``step(-1)``)."""
+        lay = self.layout
+        mask = np.zeros(lay.N_ACTIONS, dtype=bool)
         if self.done:
             return mask
         phase = self.phase
@@ -641,15 +712,15 @@ class SmallWorldEnv(GBEnv):
             for index in self._conquest_options(rip):     # conquer
                 mask[A_REGION + index] = True
             for rid in self._sorcerer_targets(rip):
-                mask[A_SORCERER + rid - 1] = True
+                mask[lay.A_SORCERER + rid - 1] = True
             for index in self._dragon_targets(rip):
-                mask[A_DRAGON + index] = True
+                mask[lay.A_DRAGON + index] = True
 
         elif phase in (Phase.REDEPLOY, Phase.GHOUL_REDEPLOY, Phase.VICTIM_REDEPLOY):
             if self._redeployable(rip) > 0:
                 for region in self.board.regions_of_race(rip):
                     mask[A_REGION + region.index] = True
-                    mask[A_REGION_ALL + region.index] = True
+                    mask[lay.A_REGION_ALL + region.index] = True
 
         elif phase == Phase.ENCAMPMENTS:
             if self._encampments_left > 0:
@@ -672,7 +743,7 @@ class SmallWorldEnv(GBEnv):
         elif phase == Phase.ALLY:
             mask[A_PASS] = True
             for seat in self._ally_options():
-                mask[A_ALLY + (seat - self._turn_seat) % self.n_players] = True
+                mask[lay.A_ALLY + (seat - self._turn_seat) % self.n_players] = True
 
         elif phase == Phase.STOUT_DECLINE:
             mask[A_DECLINE] = True
@@ -704,14 +775,15 @@ class SmallWorldEnv(GBEnv):
             self._advance_seat()
             return (self.observation, list(self._step_rewards), self.done,
                     False, self._get_info())
-        if not 0 <= action < N_ACTIONS:
-            raise Exception(f'Illegal action {action} : outside 0..{N_ACTIONS - 1}')
+        if not 0 <= action < self.layout.N_ACTIONS:
+            raise Exception(f'Illegal action {action} : outside '
+                            f'0..{self.layout.N_ACTIONS - 1}')
         masks = self.action_masks()
         if masks[action] == False:  # noqa: E712 - same style as the other envs
             raise Exception(f'Illegal action {action} : Legal actions {masks}')
 
         self._step_rewards = [0.0] * self.n_players
-        kind, arg = action_kind(action)
+        kind, arg = self.layout.action_kind(action)
         phase = self.phase
 
         if phase == Phase.PICK_COMBO:
@@ -1551,7 +1623,7 @@ class SmallWorldEnv(GBEnv):
         seat0 = self.current_player if 0 <= self.current_player < n else 0
         rip = self._acting_rip
 
-        regions = np.zeros((MAX_REGIONS, REGION_COLS), dtype=np.int64)
+        regions = np.zeros((self.n_regions, REGION_COLS), dtype=np.int64)
         for region in self.board.regions:
             row = regions[region.index]
             row[0] = int(region.terrain)
@@ -1653,7 +1725,7 @@ class SmallWorldEnv(GBEnv):
 
     def describe_action(self, action: int) -> str:
         """Human-readable description of `action` in the current state."""
-        kind, arg = action_kind(int(action))
+        kind, arg = self.layout.action_kind(int(action))
         rip = self._acting_rip
         if kind == KIND_COMBO:
             if arg < len(self.combo_column.visible):
@@ -1721,3 +1793,21 @@ class SmallWorldEnv(GBEnv):
         """Refresh the NiceGUI page (no terminal rendering for this game)."""
         super().render(**kwargs)
         self.render_web.render_web(self, **kwargs)
+
+
+class SmallWorld2Env(SmallWorldEnv):
+    """2-player Small World (`smallw2`, 23-region board, 10 turns)."""
+
+    DEFAULT_PLAYERS = 2
+
+
+class SmallWorld4Env(SmallWorldEnv):
+    """4-player Small World (`smallw4`, 39-region board, 9 turns)."""
+
+    DEFAULT_PLAYERS = 4
+
+
+class SmallWorld5Env(SmallWorldEnv):
+    """5-player Small World (`smallw5`, 48-region board, 8 turns)."""
+
+    DEFAULT_PLAYERS = 5

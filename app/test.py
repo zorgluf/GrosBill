@@ -30,7 +30,11 @@ def main(args):
         seed = args.seed
 
     #make environment
-    env = get_environment(args.env_name)()
+    env_class = get_environment(args.env_name)
+    env = env_class()
+    if getattr(env, 'player_counts', None):
+        # one network for several player counts (jamaica): play at the count of -a
+        env = env_class(n_players=len(args.agents))
     set_random_seed(seed)
 
     total_rewards = {}

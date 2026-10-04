@@ -1,8 +1,12 @@
 # Jamaica (`jamaica`)
 
 The pirate race around the island (Malcolm Braff, Bruno Cathala, Sébastien Pauchon — GameWorks,
-2007), 3 to 6 players. `-e jamaica` is the 4-player game; `JamaicaEnv(n_players=3..6)` or a
-`player_names` list gives other counts. The 2-player Ghost Ship variant is not implemented.
+2007), 3 to 6 players. `JamaicaEnv` plays a fixed count (4 by default; `n_players=3..6` or a
+`player_names` list gives others); `JamaicaEnv(player_counts=...)` draws the count of every game
+at `reset()` (or takes `options={'n_players': n}`). `-e jamaica` registers `JamaicaAllCountsEnv`,
+which draws it among 3-6 when built without a count: the single `zoo/jamaica` network is trained on
+every count (the spaces do not depend on it and the observation carries it, `glob[63]`). The
+2-player Ghost Ship variant is not implemented.
 
 ```
 envs/constants.py   enums, action layout (Discrete(148)), sizes — no nicegui/gym import

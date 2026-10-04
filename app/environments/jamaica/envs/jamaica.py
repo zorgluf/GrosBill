@@ -42,8 +42,8 @@ from .constants import (A_CAPTAIN, A_CARD, A_DEST, A_GIVE_CURSED, A_LOAD_HOLD, A
                         A_PAY_HOLD, A_POWDER, A_SABRE, A_STEAL_HIDDEN, A_STEAL_HOLD,
                         A_STEAL_POWER, A_TARGET, DEFAULT_PLAYERS, HAND_SIZE, Kind,
                         MAP_HAND_SIZE, MAX_DEST, MAX_PLAYERS, MAX_ROUNDS, MIN_PLAYERS,
-                        N_ACTIONS, N_CODES, Phase, Power, POWER_NAMES, RES_NAMES, Res,
-                        SABRE_REROLL, START_FOOD, START_GOLD, STAR, SYM_NAMES, SYM_RES, Sym,
+                        N_ACTIONS, N_CODES, PLAYER_COUNTS, Phase, Power, POWER_NAMES,
+                        RES_NAMES, Res, SABRE_REROLL, START_FOOD, START_GOLD, STAR, SYM_NAMES, SYM_RES, Sym,
                         action_family, card_syms, Family)
 from .rules import SIXTH_SLOT, Ship, hold_at
 from .track import Track, default_track
@@ -134,17 +134,37 @@ def _mean(values) -> float:
 
 
 class JamaicaEnv(GBEnv):
+    """Jamaica for 3 to 6 players.
+
+    The player count is fixed (`n_players`, or the length of `player_names`,
+    4 by default) unless `player_counts` is given: then every `reset()` draws
+    the count of the new game from it (or takes ``options['n_players']``), and
+    the players are named "Player 1".."Player n". The spaces do not depend on
+    the count, so one network plays every count (`JamaicaAllCountsEnv`).
+    """
+
     metadata = {'render_modes': ['human_web']}
 
     SHAPING_SCALE = 40.0   #: public-score lead (points) per 1.0 of potential
     PHI_CLIP = 0.6
 
     def __init__(self, n_players: int | None = None, player_names: list[str] | None = None,
-                 pause_between_turns: bool = True, track: Track | None = None):
-        n = len(player_names) if player_names is not None else (n_players or DEFAULT_PLAYERS)
-        if not MIN_PLAYERS <= n <= MAX_PLAYERS:
-            raise ValueError(f'Jamaica is played by {MIN_PLAYERS} to {MAX_PLAYERS} players, not {n}')
+                 pause_between_turns: bool = True, track: Track | None = None,
+                 player_counts: tuple[int, ...] | None = None):
+        if player_counts is not None:
+            if n_players is not None or player_names is not None:
+                raise ValueError('player_counts draws the count of every game: '
+                                 'give neither n_players nor player_names')
+            player_counts = tuple(sorted({int(k) for k in player_counts}))
+            n = DEFAULT_PLAYERS if DEFAULT_PLAYERS in player_counts else player_counts[0]
+        else:
+            n = len(player_names) if player_names is not None else (n_players or DEFAULT_PLAYERS)
+        for k in player_counts or (n,):
+            if not MIN_PLAYERS <= k <= MAX_PLAYERS:
+                raise ValueError(f'Jamaica is played by {MIN_PLAYERS} to {MAX_PLAYERS} players, not {k}')
         super().__init__(name='jamaica', n_players=n, player_names=player_names)
+        #: counts the player count of each game is drawn from (None: always `n_players`)
+        self.player_counts = player_counts
         self.track = track if track is not None else default_track()
         self.pause_between_turns = pause_between_turns
         self.faces = data.COMBAT_FACES
@@ -166,6 +186,7 @@ class JamaicaEnv(GBEnv):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        self._choose_player_count((options or {}).get('n_players'))
         n = self.n_players
         self._rig_d6: list[int] = []
         self._rig_combat: list[int] = []
@@ -212,6 +233,20 @@ class JamaicaEnv(GBEnv):
         self._advance(allow_pause=False)
         self._phi = self._potential()
         return self.observation, self._get_info()
+
+    def _choose_player_count(self, requested: int | None) -> None:
+        """Player count of the game being reset: `requested`, else a draw from
+        `player_counts`; a fixed-count env only accepts its own count."""
+        if self.player_counts is None:
+            if requested is not None and int(requested) != self.n_players:
+                raise ValueError(f'this env plays {self.n_players} players, not {requested} '
+                                 '(build it with player_counts to vary the count)')
+            return
+        n = int(requested) if requested is not None else int(self.np_random.choice(self.player_counts))
+        if n not in self.player_counts:
+            raise ValueError(f'{n} players is not one of {self.player_counts}')
+        self.n_players = n
+        self.player_names = [f'Player {i + 1}' for i in range(n)]
 
     def step(self, action):
         if self.done:
@@ -980,3 +1015,17 @@ class JamaicaEnv(GBEnv):
 
 
 assert MAX_DEST >= 2
+
+
+class JamaicaAllCountsEnv(JamaicaEnv):
+    """`JamaicaEnv` that, built without a count, plays every game with a player
+    count drawn from 3 to 6 — what `train.py` and the self-play wrapper build
+    for `-e jamaica`, so the single `zoo/jamaica` network learns every count.
+    Given `n_players` or `player_names` (`test.py`, `play.py`) it plays that
+    count only."""
+
+    def __init__(self, n_players: int | None = None, player_names: list[str] | None = None,
+                 pause_between_turns: bool = True, track: Track | None = None):
+        fixed = n_players is not None or player_names is not None
+        super().__init__(n_players, player_names, pause_between_turns, track,
+                         player_counts=None if fixed else PLAYER_COUNTS)

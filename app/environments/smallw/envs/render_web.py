@@ -19,8 +19,9 @@ Layout
     | event log (scrollable, newest at the bottom)             |
     +----------------------------------------------------------+
 
-The board is `static/board3p.svg` (597x297 px) with an SVG overlay drawn in
-the **image pixel coordinates**: the race token of every occupied region with
+The board is `static/board<N>p.svg` of the env's player count (its `MapDef`:
+597x297 px for 3 players, about 520 px square for 4 and 5) with an SVG overlay
+drawn in the **image pixel coordinates**: the race token of every occupied region with
 its token count, greyscaled while the race is in decline, the markers (Lost
 Tribe, Mountain, Troll's Lair — drawn by hand, no artwork exists —, fortress,
 encampments, hole, hero, dragon), the turn marker on the turn track, a
@@ -28,8 +29,11 @@ coloured ring around every legal target and a star on the suggested action.
 
 Click mapping (`action_for_click`)
 ----------------------------------
-A click gives image coordinates, the nearest region anchor gives the region,
-and the phase plus the current *mode* give the action:
+A click gives image coordinates, the region drawn under it gives the region
+(`region_index_at`: the outlines of `shapes.py`, the ones `draw_assets.py`
+draws; the nearest anchor on a border line or off the board), and the phase
+plus the current *mode* give the action (in the env's `ActionLayout`, here
+written for 3 players):
 
 ===================================  =========================================
 phase                                action sent by a click
@@ -79,8 +83,8 @@ from typing import TYPE_CHECKING
 from nicegui import app, ui
 
 from .classes import POWERS, RACES
-from .map3p import BOARD_IMAGE, BOARD_SIZE, TURN_TRACK
 from .rules_text import POWER_RULES, RACE_RULES
+from .shapes import shape_for
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .smallw import SmallWorldEnv
@@ -140,9 +144,10 @@ def _url_prefix() -> str:
             + request.scope.get('root_path', ''))
 
 
-def board_url() -> str:
-    """URL of the board image."""
-    return f'{STATIC_URL}/{BOARD_IMAGE}'
+def board_url(env=None) -> str:
+    """URL of the board image of `env` (the 3-player board by default)."""
+    image = 'board3p.svg' if env is None else env.board.map.board_image
+    return f'{STATIC_URL}/{image}'
 
 
 # --------------------------------------------------------------------------- #
@@ -347,9 +352,10 @@ def available_modes(env) -> list[str]:
     if phase in (sw.Phase.CONQUER, sw.Phase.GHOUL_CONQUER):
         masks = env.action_masks()
         modes = [MODE_NORMAL]
-        if any(masks[sw.A_SORCERER:sw.A_DRAGON]):
+        lay = env.layout
+        if any(masks[lay.A_SORCERER:lay.A_DRAGON]):
             modes.append(MODE_SORCERER)
-        if any(masks[sw.A_DRAGON:sw.A_ALLY]):
+        if any(masks[lay.A_DRAGON:lay.A_ALLY]):
             modes.append(MODE_DRAGON)
         return modes
     if phase in (sw.Phase.REDEPLOY, sw.Phase.GHOUL_REDEPLOY,
@@ -369,17 +375,18 @@ def region_targets(env, mode: str = MODE_NORMAL) -> dict[int, str]:
     if env.done or env.board is None:
         return {}
     masks = env.action_masks()
+    lay = env.layout
     phase = env.phase
     rip = env.current_race
     targets: dict[int, str] = {}
 
     if phase in (sw.Phase.CONQUER, sw.Phase.GHOUL_CONQUER):
         if mode == MODE_SORCERER:
-            base, kind = sw.A_SORCERER, TARGET_SORCERER
+            base, kind = lay.A_SORCERER, TARGET_SORCERER
         elif mode == MODE_DRAGON:
-            base, kind = sw.A_DRAGON, TARGET_DRAGON
+            base, kind = lay.A_DRAGON, TARGET_DRAGON
         else:
-            base, kind = sw.A_REGION, None
+            base, kind = lay.A_REGION, None
         for index in range(env.n_regions):
             if not masks[base + index]:
                 continue
@@ -392,11 +399,11 @@ def region_targets(env, mode: str = MODE_NORMAL) -> dict[int, str]:
     elif phase in (sw.Phase.REDEPLOY, sw.Phase.GHOUL_REDEPLOY,
                    sw.Phase.VICTIM_REDEPLOY):
         for index in range(env.n_regions):
-            if masks[sw.A_REGION + index]:
+            if masks[lay.A_REGION + index]:
                 targets[index] = TARGET_REDEPLOY
     elif phase in (sw.Phase.ENCAMPMENTS, sw.Phase.FORTRESS, sw.Phase.HEROES):
         for index in range(env.n_regions):
-            if masks[sw.A_REGION + index]:
+            if masks[lay.A_REGION + index]:
                 targets[index] = TARGET_MARKER
     return targets
 
@@ -443,6 +450,18 @@ def conquest_cost(env, region) -> int | None:
         return None
 
 
+def region_index_at(env, x: float, y: float) -> int:
+    """0-based index of the region drawn under `(x, y)` (its outline in
+    `shapes.py`), or of the nearest anchor on a border line / off the board.
+
+    `(x, y)` are the image pixel coordinates `ui.interactive_image` yields.
+    """
+    region_id = shape_for(env.n_players).region_at(x, y)
+    if region_id is not None:
+        return region_id - 1
+    return nearest_region_index(env, x, y)
+
+
 def nearest_region_index(env, x: float, y: float) -> int:
     """0-based index of the region whose anchor is closest to `(x, y)`.
 
@@ -475,19 +494,20 @@ def action_for_click(env, index: int, mode: str = MODE_NORMAL
     if phase == sw.Phase.STOUT_DECLINE:
         return None, 'use the "Go in decline" / "Stay active" buttons'
 
+    lay = env.layout
     if phase in (sw.Phase.CONQUER, sw.Phase.GHOUL_CONQUER):
         if mode == MODE_SORCERER:
-            action = sw.A_SORCERER + index
+            action = lay.A_SORCERER + index
         elif mode == MODE_DRAGON:
-            action = sw.A_DRAGON + index
+            action = lay.A_DRAGON + index
         else:
-            action = sw.A_REGION + index
+            action = lay.A_REGION + index
     elif phase in (sw.Phase.REDEPLOY, sw.Phase.GHOUL_REDEPLOY,
                    sw.Phase.VICTIM_REDEPLOY):
-        action = (sw.A_REGION_ALL + index if mode == MODE_ALL
-                  else sw.A_REGION + index)
+        action = (lay.A_REGION_ALL + index if mode == MODE_ALL
+                  else lay.A_REGION + index)
     elif phase in (sw.Phase.ENCAMPMENTS, sw.Phase.FORTRESS, sw.Phase.HEROES):
-        action = sw.A_REGION + index
+        action = lay.A_REGION + index
     else:                                                   # pragma: no cover
         return None, f'nothing to click in {phase_label(phase)}'
 
@@ -565,7 +585,7 @@ def button_actions(env) -> dict[str, dict]:
     allies = {}
     for seat in range(env.n_players):
         # the ally actions are relative to the acting player (egocentric)
-        action = sw.A_ALLY + (seat - env._turn_seat) % env.n_players
+        action = env.layout.A_ALLY + (seat - env._turn_seat) % env.n_players
         allies[seat] = {
             'label': f'Ally with {env.players[seat].name}',
             'action': action,
@@ -951,13 +971,14 @@ def board_overlay_svg(env, pov_player: int | None = None,
     sw = _sw()
     if env.board is None:                                   # pragma: no cover
         return ''
-    width, height = BOARD_SIZE
+    width, height = env.board.map.board_size
+    turn_track = env.board.map.turn_track
     parts: list[str] = [f'<!-- smallw overlay {width}x{height} -->']
 
     # turn marker on the turn track
     turn_index = max(0, min(env.turn, env.turns_total) - 1)
-    if turn_index < len(TURN_TRACK):
-        tx, ty = TURN_TRACK[turn_index]
+    if turn_index < len(turn_track):
+        tx, ty = turn_track[turn_index]
         parts.append(f'<image href="{piece_url("turn_marker")}" '
                      f'x="{tx - 12:.1f}" y="{ty - 7:.1f}" width="24" '
                      f'height="13" opacity="0.95">'
@@ -969,7 +990,7 @@ def board_overlay_svg(env, pov_player: int | None = None,
     suggested_index = None
     if suggested_action is not None:
         try:
-            kind, arg = sw.action_kind(int(suggested_action))
+            kind, arg = env.layout.action_kind(int(suggested_action))
         except ValueError:                                  # pragma: no cover
             kind, arg = '', 0
         if kind in (sw.KIND_REGION, sw.KIND_REGION_ALL, sw.KIND_SORCERER,
@@ -1115,7 +1136,7 @@ class RenderWeb:
         self._paint(('controls', 'board'))
 
     def _on_board_mouse(self, event) -> None:
-        """Board click → nearest region → action of the phase and mode."""
+        """Board click → region under it → action of the phase and mode."""
         env = self._env
         if env is None or env.board is None:                # pragma: no cover
             return
@@ -1125,7 +1146,7 @@ class RenderWeb:
         x, y = getattr(event, 'image_x', None), getattr(event, 'image_y', None)
         if x is None or y is None:                          # pragma: no cover
             return
-        index = nearest_region_index(env, x, y)
+        index = region_index_at(env, x, y)
         action, message = action_for_click(env, index, self.current_mode(env))
         if action is None:
             ui.notify(message, type='warning')
@@ -1256,10 +1277,14 @@ class RenderWeb:
             content = content.replace(f'href="{STATIC_URL}/',
                                       f'href="{prefix}{STATIC_URL}/')
         image = ui.interactive_image(
-            board_url(), content=content, on_mouse=self._on_board_mouse,
+            board_url(env), content=content, on_mouse=self._on_board_mouse,
             events=['click'], cross=False, sanitize=False,
         )
-        image.style('width: 68vw; max-width: 100%; min-width: 320px;')
+        # 68% of the window width, but never taller than 85% of its height
+        # (the 4 and 5 player boards are square)
+        width, height = env.board.map.board_size
+        image.style(f'width: min(68vw, {85 * width / height:.0f}vh); '
+                    'max-width: 100%; min-width: 320px;')
         image.classes('border rounded')
 
     def _build_combos(self):

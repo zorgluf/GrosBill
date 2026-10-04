@@ -17,9 +17,10 @@ Contents:
     * `Tray`: the supplies of race tokens and of the markers;
     * `Combo` / `ComboColumn`: the column of 6 visible race+power combinations;
     * `Dice`: the pre-rolled reinforcement die;
-    * `Board`: the 30 regions plus the queries the engine needs.
+    * `Board`: the regions of the board of a player count (`maps.py`) plus the
+      queries the engine needs.
 
-`Terrain` and `Symbol` are defined in `map3p.py` (the static map needs them
+`Terrain` and `Symbol` are defined in `mapdef.py` (the static maps need them
 too) and simply re-exported here.
 
 Two conventions hold everywhere in this file:
@@ -43,21 +44,12 @@ from enum import IntEnum
 
 import numpy as np
 
-from .map3p import (
-    ADJACENCY,
-    BORDER_IDS,
-    COASTAL_IDS,
-    N_REGIONS,
-    RegionDef,
-    Symbol,
-    Terrain,
-    map_for,
-    turns_for,
-)
+from .mapdef import MapDef, RegionDef, Symbol, Terrain
+from .maps import map_def, map_for, turns_for
 
 __all__ = [
     # re-exports
-    'Terrain', 'Symbol', 'RegionDef', 'N_REGIONS', 'map_for', 'turns_for',
+    'Terrain', 'Symbol', 'RegionDef', 'MapDef', 'map_def', 'map_for', 'turns_for',
     # constants
     'MAX_PLAYERS', 'START_COINS', 'N_VISIBLE_COMBOS', 'DIE_FACES',
     'N_FORTRESSES', 'N_ENCAMPMENTS', 'N_HEROES', 'N_HOLES', 'N_DRAGONS',
@@ -75,8 +67,8 @@ __all__ = [
 # Constants
 # --------------------------------------------------------------------------- #
 
-#: Largest supported player count. The action space is sized for it even
-#: though only the 3-player board is transcribed so far.
+#: Largest supported player count. The `players` observation rows and the
+#: Diplomat action slots are sized for it whatever the player count.
 MAX_PLAYERS = 5
 
 #: Coins (of value 1) each player starts with.
@@ -298,8 +290,9 @@ class Region:
     """One board region: its immutable definition plus its current occupation.
 
     The static part (terrain, symbols, border flag, adjacency, anchor) lives in
-    :attr:`static` (a `RegionDef` from `map3p`); everything else is dynamic
-    state, all of it plain scalars so that a deep copy is cheap and total.
+    :attr:`static` (a `RegionDef` of the board, see `mapdef.py`); everything
+    else is dynamic state, all of it plain scalars so that a deep copy is cheap
+    and total.
 
     Attributes:
         static: the `RegionDef` of this region.
@@ -342,7 +335,7 @@ class Region:
 
     @property
     def id(self) -> int:
-        """Region number printed on the board (1..30)."""
+        """Region number on the board (1..N)."""
         return self.static.id
 
     @property
@@ -1089,16 +1082,18 @@ class Dice:
 # --------------------------------------------------------------------------- #
 
 class Board:
-    """The 30 regions of the map plus the queries the engine and GUI need.
+    """The regions of the map plus the queries the engine and GUI need.
 
     Attributes:
         n_players: player count the map was built for.
+        map: the static `MapDef` of that board (shared, never deep-copied).
         regions: the `Region` objects, ordered by id (`regions[r.index]`).
     """
 
     def __init__(self, n_players: int = 3):
         self.n_players = n_players
-        self.regions: list[Region] = [Region(d) for d in map_for(n_players)]
+        self.map: MapDef = map_def(n_players)
+        self.regions: list[Region] = [Region(d) for d in self.map.regions]
 
     # -- access ------------------------------------------------------------- #
 
@@ -1124,7 +1119,7 @@ class Board:
         Flying power are handled by the hooks, not here.
         """
         region_id = region if isinstance(region, int) else region.id
-        return [self.by_id(other) for other in sorted(ADJACENCY[region_id])]
+        return [self.by_id(other) for other in sorted(self.map.adjacency[region_id])]
 
     # -- setup -------------------------------------------------------------- #
 
@@ -1175,12 +1170,12 @@ class Board:
     def is_coastal(self, region: Region | int) -> bool:
         """True if `region` touches a sea or the lake (Tritons)."""
         region_id = region if isinstance(region, int) else region.id
-        return region_id in COASTAL_IDS
+        return region_id in self.map.coastal_ids
 
     def is_border(self, region: Region | int) -> bool:
         """True if `region` may host a first conquest."""
         region_id = region if isinstance(region, int) else region.id
-        return region_id in BORDER_IDS
+        return region_id in self.map.border_ids
 
     def caverns(self) -> list[Region]:
         """The regions with a Cavern symbol (all linked by the Underworld)."""

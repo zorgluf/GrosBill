@@ -10,7 +10,10 @@ are rendered with a CSS `filter: grayscale(1)`.
 
 | file | size (px) |
 |------|-----------|
+| `board2p.svg` | 592x315 |
 | `board3p.svg` | 597x297 |
+| `board4p.svg` | 520x523 |
+| `board5p.svg` | 552x548 |
 | `pieces/coin_1.svg` | 56x56 |
 | `pieces/coin_10.svg` | 56x56 |
 | `pieces/coin_3.svg` | 56x56 |
@@ -72,4 +75,4 @@ are rendered with a CSS `filter: grayscale(1)`.
 | `races/wizards.svg` | 429x230 |
 | `races/wizards_token.svg` | 88x88 |
 
-61 image files.
+64 image files.
