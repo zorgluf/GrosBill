@@ -4,14 +4,22 @@ Warm-starts from zoo/<env>/best_model.zip (train PPO first with train.py) and
 refines it with search-improved targets instead of the PPO surrogate:
 
   1. Self-play with determinized MCTS (hidden cards re-dealt at every state load,
-     see train_mcts.DeterminizedGymctsNeuralAgent), leaves evaluated by the VALUE
+     like train_mcts.DeterminizedGymctsNeuralAgent), leaves evaluated by the VALUE
      HEAD (no random rollouts), Dirichlet noise at the root and temperature-based
-     move sampling for the first moves.
+     move sampling for the first moves. The games are played in parallel worker
+     processes (--n_workers).
   2. For every visited state, record the root visit-count distribution pi and,
      at the end of the game, the outcome z = +/-1.
   3. Train the SAME MaskableActorCriticPolicy with the AlphaZero loss:
      cross-entropy(policy, pi) + vf_coef * MSE(value, z). No importance ratios,
      no clipping, no GAE.
+
+The search is a small MCTS of its own (no gymcts) with LAZY expansion, as in
+AlphaZero: expanding a node only stores the priors of its children, and a child's
+env state is built the first time the search selects it. gymcts' eager expansion
+stepped every legal child (one opponent forward pass each) and evaluated one of
+them, so most of the work went into children the search never visited. The
+selection rule and the training targets are unchanged (gymcts' PUCT_v0).
 
 The output stays a plain MaskablePPO zip: promotion, play.py, test.py and the
 self-play opponents all keep working unchanged (they only call model.predict).
@@ -19,9 +27,12 @@ self-play opponents all keep working unchanged (they only call model.predict).
 import os
 import sys
 import argparse
-import inspect
+import copy
 import logging
+import math
+import multiprocessing
 import random
+import signal
 from collections import deque
 
 import numpy as np
@@ -39,134 +50,192 @@ from utils.selfplay import selfplay_wrapper
 
 import config
 
-import gymnasium.wrappers as _gym_wrappers
-import gymcts.gymcts_deepcopy_wrapper as _gymcts_dcw
-from gymcts.gymcts_deepcopy_wrapper import DeepCopyMCTSGymEnvWrapper
-from gymcts.logger import log
+# gymcts defaults (GymctsNode.ubc_c / best_action_weight), kept from the gymcts-based search
+C_PUCT = 0.707
+BEST_ACTION_WEIGHT = 0.05
 
-from train_mcts import DeterminizedGymctsNeuralAgent
-
-# gymcts targets gymnasium >= 1.0 (RecordEpisodeStatistics(buffer_length=...));
-# on gymnasium 0.29 the argument is named deque_size. Shim so both work.
-if 'buffer_length' not in inspect.signature(_gym_wrappers.RecordEpisodeStatistics.__init__).parameters:
-    class _CompatRecordEpisodeStatistics(_gym_wrappers.RecordEpisodeStatistics):
-        def __init__(self, env, buffer_length=100, **kwargs):
-            super().__init__(env, deque_size=buffer_length, **kwargs)
-    _gymcts_dcw.RecordEpisodeStatistics = _CompatRecordEpisodeStatistics
+logger = logging.getLogger(__name__)
+_warned_no_redeterminize = False
 
 
-class ValueLeafMCTSWrapper(DeepCopyMCTSGymEnvWrapper):
-    """AlphaZero-style leaf evaluation: cumulative return so far + value head,
-    instead of a random playout to the end of the game. One forward pass per
-    leaf instead of a ~25-move playout (each move of which is an opponent
-    predict), and the evaluation improves as the value head is trained.
+class Node:
+    """MCTS node. Values are the learner's: the opponents' moves happen inside the
+    self-play env step, so there is no sign flip between tree levels."""
 
-    The accumulated return keeps leaf values comparable with terminal leaves
-    (which return the plain cumulative episode return), like the
-    RecordEpisodeStatistics-based rollout() this replaces.
-    """
+    __slots__ = ('prior', 'state', 'obs', 'acc_return', 'terminal', 'children',
+                 'visit_count', 'mean_value', 'max_value')
 
-    value_model = None  # class attribute: shared by all deepcopied node states
-    _acc_return: float = 0.0
+    def __init__(self, prior: float):
+        self.prior = prior
+        self.state = None         # self-play env at this node, built on first visit
+        self.obs = None
+        self.acc_return = 0.0     # learner's return from the start of the game to this node
+        self.terminal = False
+        self.children = None      # {action: Node}, set by evaluate()
+        self.visit_count = 0
+        self.mean_value = 0.0
+        self.max_value = -math.inf
 
-    def reset(self, **kwargs):
-        self._acc_return = 0.0
-        return super().reset(**kwargs)
-
-    def step(self, action):
-        step_tuple = super().step(action)
-        self._acc_return += float(step_tuple[1])
-        return step_tuple
-
-    def rollout(self) -> float:
-        if self.is_terminal():
-            return self._acc_return
-        obs = self.env.unwrapped.observation
-        obs_tensor, _ = ValueLeafMCTSWrapper.value_model.policy.obs_to_tensor(obs)
-        with torch.no_grad():
-            value = ValueLeafMCTSWrapper.value_model.policy.predict_values(obs_tensor)
-        return self._acc_return + float(value.item())
+    def score(self, parent_visits: int) -> float:
+        """gymcts PUCT_v0: Q = 0 while unvisited, else a mean/max mix."""
+        q = 0.0 if self.visit_count == 0 else (
+            (1 - BEST_ACTION_WEIGHT) * self.mean_value + BEST_ACTION_WEIGHT * self.max_value)
+        return q + C_PUCT * self.prior * math.sqrt(parent_visits) / (1 + self.visit_count)
 
 
-class AlphaZeroMCTSAgent(DeterminizedGymctsNeuralAgent):
-    """Determinized MCTS with the AlphaZero data-generation ingredients:
-    Dirichlet noise on the root priors (exploration across games), temperature
-    sampling of the played move for the first moves (diversity), and capture of
-    the root visit-count distribution (the policy training target)."""
+def load_state(state):
+    """Copy of a node's env with the hidden information re-dealt from the learner's
+    point of view (determinized MCTS, see train_mcts.DeterminizedGymctsNeuralAgent):
+    the search cannot plan with the true deck order or the opponent's real cards."""
+    global _warned_no_redeterminize
+    env = copy.deepcopy(state)
+    if hasattr(env, 'redeterminize'):
+        if not env.done:
+            env.redeterminize(env.agent_player_num)
+    elif not _warned_no_redeterminize:
+        _warned_no_redeterminize = True
+        logger.warning(f"env {env.name} has no redeterminize(): MCTS will plan "
+                       f"with perfect information (hidden-info leak)")
+    return env
 
-    def __init__(self, *args, dirichlet_alpha=0.3, dirichlet_eps=0.25,
-                 temperature_moves=8, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.dirichlet_alpha = dirichlet_alpha
-        self.dirichlet_eps = dirichlet_eps
-        self.temperature_moves = temperature_moves
-        self.move_idx = 0
-        self.last_visit_probs = None  # full action-space vector, set each step
 
-    def perform_mcts_step(self, search_start_node=None, num_simulations=None,
-                          render_tree_after_step=None):
-        if search_start_node is None:
-            search_start_node = self.search_root_node
-        if num_simulations is None:
-            num_simulations = self.number_of_simulations_per_step
+def evaluate(policy, node) -> float:
+    """One forward pass (the body of MaskableActorCriticPolicy.forward): sets the
+    node's children with their masked priors and returns the value head output."""
+    mask = np.asarray(node.state.action_masks(), dtype=bool)
+    obs_t, _ = policy.obs_to_tensor(node.obs)
+    with torch.no_grad():
+        features = policy.extract_features(obs_t)
+        if policy.share_features_extractor:
+            latent_pi, latent_vf = policy.mlp_extractor(features)
+        else:
+            latent_pi = policy.mlp_extractor.forward_actor(features[0])
+            latent_vf = policy.mlp_extractor.forward_critic(features[1])
+        distribution = policy._get_action_dist_from_latent(latent_pi)
+        distribution.apply_masking(mask[None])
+        probs = distribution.distribution.probs[0].cpu().numpy()
+        value = float(policy.value_net(latent_vf).item())
+    node.children = {int(a): Node(float(probs[a])) for a in np.flatnonzero(mask)}
+    return value
 
-        # expand the root up-front so Dirichlet noise can be mixed into its priors
-        if search_start_node.is_leaf():
-            self.expand_node(search_start_node)
-        children = search_start_node.children
-        if self.dirichlet_eps > 0 and len(children) > 1:
-            noise = np.random.dirichlet([self.dirichlet_alpha] * len(children))
+
+def create_child(policy, parent, action) -> float:
+    """First visit of parent.children[action]: step a determinized copy of the
+    parent's env. Returns the leaf value: return so far + value head (AlphaZero
+    leaf evaluation, no rollout). The accumulated return keeps it comparable with
+    terminal leaves, whose value is the plain episode return."""
+    child = parent.children[action]
+    env = load_state(parent.state)
+    obs, reward, terminated, truncated, _ = env.step(action)
+    child.state, child.obs = env, obs
+    child.acc_return = parent.acc_return + float(reward)
+    child.terminal = terminated or truncated
+    if child.terminal:
+        return child.acc_return
+    return child.acc_return + evaluate(policy, child)
+
+
+def simulate(policy, root) -> None:
+    """One simulation: PUCT descent to a terminal node or to a child never visited
+    (which is built and evaluated), then backup along the path."""
+    node, path = root, [root]
+    while True:
+        if node.terminal:
+            value = node.acc_return
+            break
+        best_score, best = -math.inf, []
+        for action, child in node.children.items():
+            s = child.score(node.visit_count)
+            if s > best_score:
+                best_score, best = s, [action]
+            elif s == best_score:
+                best.append(action)
+        action = best[0] if len(best) == 1 else random.choice(best)
+        child = node.children[action]
+        path.append(child)
+        if child.state is None:
+            value = create_child(policy, node, action)
+            break
+        node = child
+    for n in path:
+        n.mean_value += (value - n.mean_value) / (n.visit_count + 1)
+        n.visit_count += 1
+        n.max_value = max(n.max_value, value)
+
+
+def generate_episode(env, policy, n_simulations, dirichlet_alpha, dirichlet_eps,
+                     temperature_moves):
+    """Play one self-play game with the MCTS agent (env is reset here).
+    Returns (obs_list, mask_list, pi_list, z) where pi is the root visit
+    distribution for each state and z = +/-1 the final outcome for the agent."""
+    obs, _ = env.reset()
+    root = Node(1.0)
+    root.state, root.obs = env, obs  # never stepped itself: the search steps copies
+    obs_list, mask_list, pi_list = [], [], []
+    move_idx = 0
+    while not root.terminal:
+        obs_list.append(root.obs)
+        mask_list.append(np.array(root.state.action_masks(), dtype=bool))
+
+        # fresh tree every move: (re)build the root's children, then mix
+        # Dirichlet noise into their priors (exploration across games)
+        evaluate(policy, root)
+        children = root.children
+        if dirichlet_eps > 0 and len(children) > 1:
+            noise = np.random.dirichlet([dirichlet_alpha] * len(children))
             for child, eta in zip(children.values(), noise):
-                child._selection_score_prior = (
-                    (1 - self.dirichlet_eps) * child._selection_score_prior
-                    + self.dirichlet_eps * float(eta))
-
-        self.vanilla_mcts_search(search_start_node=search_start_node,
-                                 num_simulations=num_simulations)
+                child.prior = (1 - dirichlet_eps) * child.prior + dirichlet_eps * float(eta)
+        if len(children) > 1:  # a forced move needs no search
+            for _ in range(n_simulations):
+                simulate(policy, root)
 
         # visit-count distribution over the root children = the policy target
         actions = np.array(list(children.keys()))
         visits = np.array([c.visit_count for c in children.values()], dtype=np.float64)
-        if visits.sum() == 0:  # defensive: cannot happen with num_simulations >= 1
+        if visits.sum() == 0:  # forced move: no simulation was run
             visits = np.ones_like(visits)
         pi = visits / visits.sum()
-        self.last_visit_probs = np.zeros(self.env.action_space.n, dtype=np.float32)
-        self.last_visit_probs[actions] = pi
+        pi_full = np.zeros(env.action_space.n, dtype=np.float32)
+        pi_full[actions] = pi
+        pi_list.append(pi_full)
 
         # temperature move selection: sample early for diversity, argmax after
-        if self.move_idx < self.temperature_moves:
+        if move_idx < temperature_moves:
             action = int(np.random.choice(actions, p=pi))
         else:
             action = int(actions[np.argmax(visits)])
-        self.move_idx += 1
+        move_idx += 1
 
-        next_node = children[action]
-        if self.clear_mcts_tree_after_step:
-            next_node.reset()
-        elif not self.keep_whole_tree_till_initial_root:
-            next_node.remove_parent()
-        self.search_root_node = next_node
-        return action, next_node
-
-
-def generate_episode(agent):
-    """Play one self-play game with the MCTS agent.
-    Returns (obs_list, mask_list, pi_list, z) where pi is the root visit
-    distribution for each state and z = +/-1 the final outcome for the agent."""
-    obs_list, mask_list, pi_list = [], [], []
-    node = agent.search_root_node
-    total_reward = 0.0
-    done = False
-    while not done:
-        obs_list.append(node._obs)
-        mask_list.append(np.array(node.state.action_masks(), dtype=bool))
-        action, node = agent.perform_mcts_step()
-        pi_list.append(agent.last_visit_probs)
-        total_reward += float(node.state._step_tuple[1])
-        done = node.terminal
+        if children[action].state is None:  # forced move: never built by the search
+            create_child(policy, root, action)
+        root = children[action]
+        root.visit_count, root.mean_value, root.max_value = 0, 0.0, -math.inf
     # zero-sum env: the sign of the episode reward identifies the winner
-    z = 1.0 if total_reward > 0 else -1.0
+    z = 1.0 if root.acc_return > 0 else -1.0
     return obs_list, mask_list, pi_list, z
+
+
+# --- self-play worker processes -------------------------------------------------
+_worker = {}
+
+
+def _init_worker(env_name, opponent_type, model_path, search_kwargs):
+    """Each worker owns a self-play env and a CPU copy of the policy, whose weights
+    come with every game (the main process trains it between iterations)."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # Ctrl-C stops the main process, which terminates the pool
+    torch.set_num_threads(1)  # batch-1 forward passes; the workers already use every core
+    env = selfplay_wrapper(get_environment(env_name))(opponent_type=opponent_type, logger=logger, device='cpu')
+    model = MaskablePPO.load(model_path, env, device='cpu')
+    model.policy.set_training_mode(False)
+    _worker.update(env=env, policy=model.policy, search_kwargs=search_kwargs)
+
+
+def _play_game(task):
+    weights, seed = task
+    policy = _worker['policy']
+    policy.load_state_dict({k: torch.from_numpy(v) for k, v in weights.items()})
+    set_random_seed(seed)
+    return generate_episode(_worker['env'], policy, **_worker['search_kwargs'])
 
 
 def train_network(model, positions, batch_size, n_epochs, lr, vf_coef,
@@ -211,10 +280,7 @@ def train_network(model, positions, batch_size, n_epochs, lr, vf_coef,
 
 
 def main(args):
-    log.setLevel(20)
-
     model_dir = os.path.join(config.MODELDIR, args.env_name)
-    logger = logging.getLogger(__name__)
     logger.setLevel(config.DEBUG if args.debug else config.INFO)
     log_name = args.log_name if args.log_name else f"{args.env_name}_az"
 
@@ -234,10 +300,20 @@ def main(args):
                  f"then refine it with this script.")
     logger.info('Warm-starting from best_model.zip...')
     model = MaskablePPO.load(model_path, env_self, device=args.device)
-    ValueLeafMCTSWrapper.value_model = model
 
     generation, base_timesteps, _ = get_model_stats(get_best_model_name(args.env_name))
     sb3_logger = configure(os.path.join(config.LOGDIR, log_name), ["tensorboard"])
+
+    search_kwargs = dict(n_simulations=args.nb_sim_mcts, dirichlet_alpha=args.dirichlet_alpha,
+                         dirichlet_eps=args.dirichlet_eps, temperature_moves=args.temperature_moves)
+    n_workers = min(args.n_workers, args.nb_episode_gen)
+    pool = None
+    if n_workers > 1:
+        # spawn, not fork: the parent already runs torch threads
+        pool = multiprocessing.get_context('spawn').Pool(
+            n_workers, initializer=_init_worker,
+            initargs=(args.env_name, args.opponent_type, model_path, search_kwargs))
+        logger.info(f'Self-play on {n_workers} worker processes')
 
     positions = deque(maxlen=args.buffer_size)
     total_positions = 0
@@ -247,23 +323,15 @@ def main(args):
 
         # 1. self-play with search
         model.policy.set_training_mode(False)
+        if pool is None:
+            games = (generate_episode(env_self, model.policy, **search_kwargs)
+                     for _ in range(args.nb_episode_gen))
+        else:
+            weights = {k: v.detach().cpu().numpy() for k, v in model.policy.state_dict().items()}
+            seeds = np.random.randint(0, 2**31 - 1, size=args.nb_episode_gen)
+            games = pool.imap(_play_game, [(weights, int(s)) for s in seeds])
         new_positions, wins = 0, 0
-        for g in range(args.nb_episode_gen):
-            env_self.reset()
-            wrapped = ValueLeafMCTSWrapper(env_self, action_mask_fn=lambda env: env.env.action_masks())
-            agent = AlphaZeroMCTSAgent(
-                env=wrapped,
-                model=model,
-                number_of_simulations_per_step=args.nb_sim_mcts,
-                clear_mcts_tree_after_step=True,
-                render_tree_after_step=False,
-                render_tree_max_depth=3,
-                exclude_unvisited_nodes_from_render=False,
-                dirichlet_alpha=args.dirichlet_alpha,
-                dirichlet_eps=args.dirichlet_eps,
-                temperature_moves=args.temperature_moves,
-            )
-            obs_l, mask_l, pi_l, z = generate_episode(agent)
+        for g, (obs_l, mask_l, pi_l, z) in enumerate(games):
             for o, m, p in zip(obs_l, mask_l, pi_l):
                 positions.append((o, m, p, z))
             new_positions += len(obs_l)
@@ -306,8 +374,12 @@ def main(args):
                                   f"_model_{generation_str}_{rewards_str}_{base_timesteps + model.num_timesteps}_.zip")
             model.save(target)
             model.save(os.path.join(model_dir, 'best_model.zip'))
-            # env_self/eval_env pick up the new best opponent at their next reset
-            # (setup_opponents watches get_best_model_name)
+            # the self-play envs (here and in the workers) and eval_env pick up the new
+            # best opponent at their next reset (setup_opponents watches get_best_model_name)
+
+    if pool is not None:
+        pool.close()
+        pool.join()
 
 
 def cli() -> None:
@@ -330,6 +402,8 @@ def cli() -> None:
             , help="Number of improvement iterations (self-play generation + training + eval)")
   parser.add_argument("--nb_episode_gen", "-negen",  type = int, default = 20
             , help="Self-play games generated per iteration (each game costs nb_sim_mcts searches per move)")
+  parser.add_argument("--n_workers", "-nw",  type = int, default = os.cpu_count()
+            , help="Processes playing the self-play games in parallel (1 = in the main process)")
   parser.add_argument("--nb_sim_mcts", "-simmcts",  type = int, default = 100
             , help="MCTS simulations per move")
   parser.add_argument("--dirichlet_alpha", "-dira", type = float, default = 0.3
@@ -356,7 +430,7 @@ def cli() -> None:
             , help="Mean eval reward needed to promote a new generation (same scale as train.py)")
 
   parser.add_argument("--device", "-dev",  type = str, default = "cpu"
-            , help="The device to use")
+            , help="The device to use for training (the search always runs on CPU workers, except with -nw 1)")
 
   args = parser.parse_args()
   main(args)

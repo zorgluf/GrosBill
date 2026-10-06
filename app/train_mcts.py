@@ -1,6 +1,7 @@
 import os
 
 import argparse
+import copy
 import time
 import logging
 import random
@@ -21,7 +22,7 @@ from utils.selfplay import selfplay_wrapper
 
 import config
 
-from gymcts.gymcts_neural_agent import GymctsNeuralAgent
+from gymcts.gymcts_neural_agent import GymctsNeuralAgent, GymctsNeuralNode
 from gymcts.gymcts_deepcopy_wrapper import DeepCopyMCTSGymEnvWrapper
 from gymcts.logger import log
 
@@ -52,6 +53,36 @@ class DeterminizedGymctsNeuralAgent(GymctsNeuralAgent):
             DeterminizedGymctsNeuralAgent._warned_no_redeterminize = True
             log.warning(f"env {base_env.name} has no redeterminize(): MCTS will plan "
                         f"with perfect information (hidden-info leak)")
+
+    def expand_node(self, node):
+        """GymctsNeuralAgent.expand_node, but loading the state only for the legal
+        actions: gymcts reloads (deep-copies) the env for every action of the action
+        space before skipping the zero-prior ones, i.e. 486 copies per expansion on
+        stotten for ~50 legal children. The priors are computed without autograd."""
+        self._load_state(node)
+        obs_tensor, _ = self._model.policy.obs_to_tensor(node._obs)
+        action_masks = np.array([self.env.action_masks()])
+        with torch.no_grad():
+            distribution = self._model.policy.get_distribution(obs=obs_tensor, action_masks=action_masks)
+            probs = distribution.distribution.probs[0].cpu().numpy()
+
+        child_dict = {}
+        state_is_fresh = True  # the state loaded for the forward pass serves the first child
+        for action in node.valid_actions:
+            if probs[action] == 0.0:
+                continue
+            if not state_is_fresh:
+                self._load_state(node)
+            state_is_fresh = False
+            obs, reward, terminal, truncated, _ = self.env.step(action)
+            child_dict[action] = GymctsNeuralNode(
+                action=action,
+                parent=node,
+                observation=copy.deepcopy(obs),
+                env_reference=self.env,
+                prior_selection_score=float(probs[action])
+            )
+        node.children = child_dict
 
 
 def generate_trajectories(agent: GymctsNeuralAgent, logger = logging.getLogger(__name__)):

@@ -31,7 +31,13 @@ class Card():
     def __init__(self, value, color: Color):
         self._color = color
         self._value = value
-        
+
+    def __deepcopy__(self, memo):
+        """Cards are immutable (nothing writes _value/_color after __init__), so env
+        copies share them: this halves the cost of the env deepcopy that MCTS does
+        at every tree node (train_mcts, train_alphazero_refine)."""
+        return self
+
     @property
     def value(self):
         return self._value
