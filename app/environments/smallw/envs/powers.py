@@ -376,8 +376,9 @@ class SeafaringHooks(PowerHooks):
       no Lost Tribe and no symbol, so `2 + defence` is already 2 for an empty
       sea or lake, while enemy tokens and markers on the water defend like on
       land;
-    * adjacency (or the border rule for a first conquest: seas 1 and 30 touch
-      the edge, the lake 15 does not) still applies;
+    * adjacency (or the border rule for a first conquest: the two seas touch
+      the edge, the lake does not — seas 1 and 30, lake 15 on the 3-player
+      map) still applies;
     * the water regions are kept when the race declines, like any other
       region (the engine's `_decline` keeps one token per region and has no
       terrain test), and they then become untouchable: no other race can ever

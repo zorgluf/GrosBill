@@ -58,8 +58,9 @@ Give it a new policy class and a new registry name, as `stottentr` did.
 
 ## Reward (`JamaicaEnv`)
 
-- **Terminal:** the rank reward, same table as smallw: +1, −1/9, −3/9, −5/9 at 4 players, with
-  ties (on score, then position) sharing.
+- **Terminal:** the rank reward, same table as smallw: +1, −1/9, −3/9, −5/9 at 4 players (the
+  losers always share −1: +1, −1/4, −3/4 at 3 players), with ties (on score, then position)
+  sharing.
 - **Shaping:** zero-sum and potential-based, on the public score (face-down cards count at their
   mean value, a card known to be cursed at −3):
   `phi_i = clip((S_i − mean_others)/40, ±0.6)`. phi is 0 at reset and at the end, so the
@@ -73,8 +74,12 @@ cd app
 python3 train.py -r -e jamaica -t 0.15 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
 ```
 
-- **Threshold:** at 4 players the mean eval reward at parity is 0, and `-t 0.15` is about a 36%
-  win rate against three copies of the best model.
+- **Player counts:** every training and evaluation game draws its count among 3-6
+  (`JamaicaAllCountsEnv`), so one network learns them all. The evaluations also log the mean
+  reward per count: `eval/mean_reward_<n>p` and `eval/mean_reward_vs_base_<n>p`.
+- **Threshold:** the mean eval reward at parity is 0 at every count; `-t 0.15` is about a 43% /
+  36% / 32% / 29% win rate at 3 / 4 / 5 / 6 players (chance: 33% / 25% / 20% / 17%), averaged
+  over the counts drawn.
 - **Once promotions stall:** continue without `-r`, with `-ent 0.002 -lr 1e-4`.
 - **What to watch:**
   - `eval/win_rate_vs_base` (above 0.6 against the start model);

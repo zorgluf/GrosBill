@@ -1,4 +1,6 @@
 import os
+from collections import deque
+
 import numpy as np
 from shutil import copyfile
 
@@ -42,6 +44,7 @@ class SelfPlayCallback(MaskableEvalCallback):
       # generation gets promoted. Recorded before super()._on_step() so the parent's
       # logger.dump() flushes everything at the same timestep.
       if self.base_eval_env is not None:
+        self.base_eval_env.episode_history = deque(maxlen=4096)
         ep_rewards, _ = evaluate_policy(
             self.model,
             self.base_eval_env,
@@ -57,8 +60,14 @@ class SelfPlayCallback(MaskableEvalCallback):
         self.logger.record("eval/win_rate_vs_base", win_rate_vs_base)
         self.logger.record("eval/mean_reward_vs_base", mean_reward_vs_base)
         self.log.info("Eval vs start model: win_rate={:.2f}, mean_reward={:.2f}".format(win_rate_vs_base, mean_reward_vs_base))
+        self._record_per_count(self.base_eval_env.episode_history, "eval/mean_reward_vs_base")
 
+      self.eval_env.set_attr('episode_history', deque(maxlen=4096))
       result = super(SelfPlayCallback, self)._on_step() #this will set self.best_mean_reward to the reward from the evaluation as it's previously -np.inf
+      # the parent has already dumped its metrics: dump the per-count ones on their own
+      if self._record_per_count([g for h in self.eval_env.get_attr('episode_history') for g in h],
+                                "eval/mean_reward"):
+        self.logger.dump(self.num_timesteps)
 
       self.log.info("Eval num_timesteps={}, episode_reward={:.2f}".format(self.num_timesteps, self.best_mean_reward))
       self.log.info("Total episodes ran={}".format(self.n_eval_episodes))
@@ -82,6 +91,19 @@ class SelfPlayCallback(MaskableEvalCallback):
 
     return True
   
+  def _record_per_count(self, history, tag) -> bool:
+    """Log the mean reward per player count of the evaluation games (`tag`_<n>p),
+    for the games whose player count varies (jamaica). False if only one count."""
+    counts = sorted({n for n, _ in history})
+    if len(counts) < 2:
+      return False
+    means = {n: float(np.mean([r for k, r in history if k == n])) for n in counts}
+    for n, mean in means.items():
+      self.logger.record(f"{tag}_{n}p", mean)
+    self.log.info("  {} per player count: {}".format(tag, ", ".join(
+        f"{n}p={mean:.2f} ({sum(k == n for k, _ in history)} games)" for n, mean in means.items())))
+    return True
+
   def _on_training_start(self) -> None:
     hparam_dict = {
         "gamma": self.model.gamma,

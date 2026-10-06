@@ -4,16 +4,18 @@ Design rationale, training recipe and the environment prerequisites (relative
 ally action, attack-cost / projected-income columns, the `mask` observation
 key) are in `README.md` next to this file. In short:
 
-* **Tokens** (L = 42): 1 context token (phase, turn, die, ...), 30 region
-  tokens, 5 player tokens (relative seat order, absent seats masked) and 6
-  combo tokens. Every categorical column is an embedding; race and power ids
+* **Tokens** (L = 12 + R): 1 context token (phase, turn, die, ...), R region
+  tokens (R = 23 / 30 / 39 / 48 on the 2 / 3 / 4 / 5 player board, read from
+  the observation space: one network per player count), 5 player tokens
+  (relative seat order, absent seats masked) and 6 combo tokens. Every categorical column is an embedding; race and power ids
   go through two tables shared by every token type (`race_emb` /
   `power_emb`), re-projected per role (active race, declined race, combo...).
 * **Trunk**: pre-LN transformer blocks with a per-head additive attention
-  bias: learned from the shortest-path distance between two regions
-  (`map3p.ADJACENCY`) and from the region -> owner-player relation.
-* **Policy**: the 133 logits are built from the output tokens (pointer
-  heads), in the `smallw.py` action layout: combos from the combo tokens,
+  bias: learned from the shortest-path distance between two regions (the
+  adjacency of the board, `maps.py`) and from the region -> owner-player
+  relation.
+* **Policy**: the logits (133 with 3 players) are built from the output tokens
+  (pointer heads), in the `smallw.py` action layout of the board: combos from the combo tokens,
   decline / pass from the context token, the four region ranges from the
   region tokens (one FiLM-conditioned head per range), the ally offsets from
   the player tokens. Last layers start at zero -> uniform over legal actions.
@@ -37,19 +39,16 @@ from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from environments.smallw.envs.classes import MAX_PLAYERS, PowerId, RaceId, Terrain
-from environments.smallw.envs.map3p import ADJACENCY
+from environments.smallw.envs.mapdef import MapDef
+from environments.smallw.envs.maps import map_by_region_count
 from environments.smallw.envs.smallw import (
-    A_ALLY,
     A_COMBO,
     A_DECLINE,
-    A_DRAGON,
     A_PASS,
     A_REGION,
-    A_REGION_ALL,
-    A_SORCERER,
+    LAYOUT_3P,
     MAX_ATTACK_COST,
-    MAX_REGIONS,
-    N_ACTIONS,
+    ActionLayout,
     Phase,
 )
 
@@ -68,14 +67,34 @@ N_OWNER_CODES = 4 + 2 * (MAX_PLAYERS - 1)
 N_PHASES = len(Phase)
 N_COMBOS = A_DECLINE - A_COMBO
 N_REGION_RANGES = 4                   # region, region_all, sorcerer, dragon
-REGION_RANGE_STARTS = (A_REGION, A_REGION_ALL, A_SORCERER, A_DRAGON)
-
-# token layout
 N_CTX = 1
-TOK_REGIONS = N_CTX
-TOK_PLAYERS = TOK_REGIONS + MAX_REGIONS
-TOK_COMBOS = TOK_PLAYERS + MAX_PLAYERS
-N_TOKENS = TOK_COMBOS + N_COMBOS
+
+
+class TokenLayout:
+    """Token positions and action ranges for a board of `n_regions` regions:
+    ``[ctx | R regions | MAX_PLAYERS players | N_COMBOS combos]``."""
+
+    def __init__(self, n_regions: int):
+        self.n_regions = n_regions
+        self.actions = ActionLayout(n_regions)
+        self.tok_regions = N_CTX
+        self.tok_players = self.tok_regions + n_regions
+        self.tok_combos = self.tok_players + MAX_PLAYERS
+        self.n_tokens = self.tok_combos + N_COMBOS
+        self.region_range_starts = (A_REGION, self.actions.A_REGION_ALL,
+                                    self.actions.A_SORCERER, self.actions.A_DRAGON)
+
+
+#: The 3-player token layout; the module constants below describe it (they are
+#: what `draw_architecture.py` draws), the networks use their own `TokenLayout`.
+TOKENS_3P = TokenLayout(LAYOUT_3P.n_regions)
+MAX_REGIONS = TOKENS_3P.n_regions
+N_ACTIONS = TOKENS_3P.actions.N_ACTIONS
+REGION_RANGE_STARTS = TOKENS_3P.region_range_starts
+TOK_REGIONS = TOKENS_3P.tok_regions
+TOK_PLAYERS = TOKENS_3P.tok_players
+TOK_COMBOS = TOKENS_3P.tok_combos
+N_TOKENS = TOKENS_3P.n_tokens
 
 #: `regions` columns fed as 0/1 flags: mine, magic, cavern, border, coastal,
 #: lair, fortress, hole, hero, dragon
@@ -85,18 +104,22 @@ REGION_FLAG_COLS = [1, 2, 3, 4, 5, 9, 10, 12, 13, 14]
 GLOBAL_FLAG_COLS = [6, 7, 8, 9, 10, 11, 12]
 
 
-def _distance_matrix() -> np.ndarray:
-    """All-pairs shortest-path distance (BFS) between the region indices."""
-    n = MAX_REGIONS
+def _distance_matrix(board: MapDef | None = None) -> np.ndarray:
+    """All-pairs shortest-path distance (BFS) between the region indices of
+    `board` (the 3-player board by default)."""
+    if board is None:
+        board = map_by_region_count(MAX_REGIONS)
+    adjacency = board.adjacency
+    n = board.n_regions
     dist = np.full((n, n), MAX_DIST, dtype=np.int64)
-    for rid in ADJACENCY:
+    for rid in adjacency:
         src = rid - 1
         dist[src, src] = 0
         seen = {rid}
         queue = deque([(rid, 0)])
         while queue:
             cur, d = queue.popleft()
-            for nxt in ADJACENCY[cur]:
+            for nxt in adjacency[cur]:
                 if nxt not in seen:
                     seen.add(nxt)
                     dist[src, nxt - 1] = min(d + 1, MAX_DIST)
@@ -143,16 +166,20 @@ class EncoderBlock(th.nn.Module):
 class EntityFeatureExtractor(BaseFeaturesExtractor):
     """Tokenises the Dict observation and runs the map-biased transformer.
 
-    Output (flat, as SB3 requires): ``[tokens (N_TOKENS * d) | player present (5)]``.
+    Output (flat, as SB3 requires): ``[tokens (n_tokens * d) | player present (5)]``.
+    The board (hence the token layout and the distance bias) is recovered from
+    the number of `regions` rows of the observation space.
     """
 
     def __init__(self, observation_space: spaces.Dict):
+        n_regions, region_cols = observation_space['regions'].shape
+        board = map_by_region_count(n_regions)
+        tok = TokenLayout(n_regions)
         self.d_model = D_MODEL
-        super().__init__(observation_space, features_dim=N_TOKENS * D_MODEL + MAX_PLAYERS)
+        super().__init__(observation_space, features_dim=tok.n_tokens * D_MODEL + MAX_PLAYERS)
+        self.tok = tok
         d, e = D_MODEL, ID_EMB_DIM
-        region_cols = observation_space['regions'].shape[1]
-        assert observation_space['regions'].shape[0] == MAX_REGIONS
-        assert observation_space['mask'].shape == (N_ACTIONS,)
+        assert observation_space['mask'].shape == (tok.actions.N_ACTIONS,)
         assert region_cols == 17, 'observation layout changed, see smallw.py'
 
         # shared identity tables + one projection per role
@@ -165,7 +192,7 @@ class EntityFeatureExtractor(BaseFeaturesExtractor):
         self.conquered_emb = th.nn.Embedding(MAX_PLAYERS + 1, d)
         self.cost_emb = th.nn.Embedding(MAX_ATTACK_COST + 2, d)
         self.count_emb = th.nn.Embedding(MAX_COUNT + 1, d)
-        self.region_pos = th.nn.Parameter(th.zeros(MAX_REGIONS, d))
+        self.region_pos = th.nn.Parameter(th.zeros(n_regions, d))
         self.region_race = th.nn.Linear(e, d, bias=False)
         # flags + log1p(tokens, encampments, cost) + 4 legality bits
         self.region_num = th.nn.Linear(len(REGION_FLAG_COLS) + 3 + N_REGION_RANGES, d)
@@ -198,7 +225,8 @@ class EntityFeatureExtractor(BaseFeaturesExtractor):
         th.nn.init.normal_(self.ctx_token, std=0.02)
 
         # attention biases
-        self.register_buffer('region_dist', th.as_tensor(_distance_matrix()), persistent=False)
+        self.register_buffer('region_dist', th.as_tensor(_distance_matrix(board)),
+                             persistent=False)
         self.dist_bias = th.nn.Embedding(MAX_DIST + 1, N_HEADS)
         self.own_bias = th.nn.Parameter(th.zeros(2, N_HEADS))   # active / declined owner
         th.nn.init.zeros_(self.dist_bias.weight)
@@ -211,8 +239,9 @@ class EntityFeatureExtractor(BaseFeaturesExtractor):
 
     def _region_tokens(self, regions: th.Tensor, mask: th.Tensor) -> th.Tensor:
         idx = regions.long()
+        n = self.tok.n_regions
         legal = th.stack(
-            [mask[:, s:s + MAX_REGIONS] for s in REGION_RANGE_STARTS], dim=2)  # (B, R, 4)
+            [mask[:, s:s + n] for s in self.tok.region_range_starts], dim=2)  # (B, R, 4)
         cost = regions[..., 16]
         num = th.cat([
             regions[..., REGION_FLAG_COLS],
@@ -238,7 +267,7 @@ class EntityFeatureExtractor(BaseFeaturesExtractor):
         num = th.cat([
             _log1p(players[..., [1, 4, 5, 8, 9, 12, 13]]),
             players[..., 11:12],
-            mask[:, A_ALLY:A_ALLY + MAX_PLAYERS].unsqueeze(-1),
+            mask[:, self.tok.actions.A_ALLY:self.tok.actions.N_ACTIONS].unsqueeze(-1),
         ], dim=-1)
         return (self.player_ids(ids) + self.player_num(num)
                 + self.ally_emb(idx[..., 10].clamp(0, MAX_PLAYERS)) + self.seat_emb)
@@ -270,10 +299,10 @@ class EntityFeatureExtractor(BaseFeaturesExtractor):
     # -- attention bias ---------------------------------------------------- #
 
     def _attention_bias(self, regions: th.Tensor, present: th.Tensor) -> th.Tensor:
-        batch = regions.shape[0]
-        bias = regions.new_zeros(batch, N_HEADS, N_TOKENS, N_TOKENS)
-        r0, r1 = TOK_REGIONS, TOK_REGIONS + MAX_REGIONS
-        p0, p1 = TOK_PLAYERS, TOK_PLAYERS + MAX_PLAYERS
+        batch, tok = regions.shape[0], self.tok
+        bias = regions.new_zeros(batch, N_HEADS, tok.n_tokens, tok.n_tokens)
+        r0, r1 = tok.tok_regions, tok.tok_regions + tok.n_regions
+        p0, p1 = tok.tok_players, tok.tok_players + MAX_PLAYERS
         # region <-> region: shortest-path distance
         bias[:, :, r0:r1, r0:r1] = self.dist_bias(self.region_dist).permute(2, 0, 1)
         # region <-> owner player, one bias per head for an active / declined owner
@@ -317,10 +346,11 @@ class EntityLatentExtractor(th.nn.Module):
       ++ context token -> MLP.
     """
 
-    def __init__(self, d_model: int):
+    def __init__(self, d_model: int, tok: TokenLayout):
         super().__init__()
         self.d_model = d_model
-        self.latent_dim_pi = N_TOKENS * d_model + MAX_PLAYERS
+        self.tok = tok
+        self.latent_dim_pi = tok.n_tokens * d_model + MAX_PLAYERS
         self.latent_dim_vf = VF_HIDDEN
         self.pool_query = th.nn.Parameter(th.zeros(d_model))
         self.pool_key = th.nn.Linear(d_model, d_model, bias=False)
@@ -336,23 +366,26 @@ class EntityLatentExtractor(th.nn.Module):
         return features
 
     def forward_critic(self, features: th.Tensor) -> th.Tensor:
-        tokens = features[:, :N_TOKENS * self.d_model].view(-1, N_TOKENS, self.d_model)
-        present = features[:, N_TOKENS * self.d_model:]
-        scores = self.pool_key(tokens) @ self.pool_query / self.d_model ** 0.5   # (B, L)
+        tok, d = self.tok, self.d_model
+        tokens = features[:, :tok.n_tokens * d].view(-1, tok.n_tokens, d)
+        present = features[:, tok.n_tokens * d:]
+        scores = self.pool_key(tokens) @ self.pool_query / d ** 0.5   # (B, L)
         absent = th.zeros_like(scores, dtype=th.bool)
-        absent[:, TOK_PLAYERS:TOK_PLAYERS + MAX_PLAYERS] = present < 0.5
+        absent[:, tok.tok_players:tok.tok_players + MAX_PLAYERS] = present < 0.5
         weights = th.softmax(scores.masked_fill(absent, -1e9), dim=1)
         pooled = (weights.unsqueeze(-1) * tokens).sum(1)
         return self.value_mlp(th.cat([pooled, tokens[:, 0]], dim=1))
 
 
 class PointerActionNet(th.nn.Module):
-    """The 133 logits, each from the output token of the entity it targets."""
+    """The logits (133 with 3 players), each from the output token of the
+    entity it targets."""
 
-    def __init__(self, d_model: int):
+    def __init__(self, d_model: int, tok: TokenLayout):
         super().__init__()
         d, h = d_model, d_model // 2
         self.d_model = d
+        self.tok = tok
         mlp = lambda n_in: _zero_last(th.nn.Sequential(
             th.nn.Linear(n_in, h), th.nn.GELU(), th.nn.Linear(h, 1)))
         self.combo_head = mlp(2 * d)
@@ -366,12 +399,12 @@ class PointerActionNet(th.nn.Module):
         self.region_heads = th.nn.ModuleList(mlp(d) for _ in range(N_REGION_RANGES))
 
     def forward(self, latent_pi: th.Tensor) -> th.Tensor:
-        d = self.d_model
-        tokens = latent_pi[:, :N_TOKENS * d].view(-1, N_TOKENS, d)
+        d, tok = self.d_model, self.tok
+        tokens = latent_pi[:, :tok.n_tokens * d].view(-1, tok.n_tokens, d)
         ctx = tokens[:, 0]
-        regions = tokens[:, TOK_REGIONS:TOK_REGIONS + MAX_REGIONS]
-        players = tokens[:, TOK_PLAYERS:TOK_PLAYERS + MAX_PLAYERS]
-        combos = tokens[:, TOK_COMBOS:TOK_COMBOS + N_COMBOS]
+        regions = tokens[:, tok.tok_regions:tok.tok_regions + tok.n_regions]
+        players = tokens[:, tok.tok_players:tok.tok_players + MAX_PLAYERS]
+        combos = tokens[:, tok.tok_combos:tok.tok_combos + N_COMBOS]
         with_ctx = lambda t: th.cat([t, ctx.unsqueeze(1).expand(-1, t.shape[1], -1)], dim=-1)
 
         combo_logits = self.combo_head(with_ctx(combos)).squeeze(-1)        # (B, 6)
@@ -380,10 +413,10 @@ class PointerActionNet(th.nn.Module):
         region_logits = [
             head(regions * (1 + film[:, k, 0:1]) + film[:, k, 1:2]).squeeze(-1)
             for k, head in enumerate(self.region_heads)
-        ]                                                                   # 4 x (B, 30)
+        ]                                                                   # 4 x (B, R)
         ally_logits = self.ally_head(with_ctx(players)).squeeze(-1)         # (B, 5)
         logits = th.cat([combo_logits, ctx_logits, *region_logits, ally_logits], dim=1)
-        assert logits.shape[1] == N_ACTIONS
+        assert logits.shape[1] == tok.actions.N_ACTIONS
         return logits
 
 
@@ -411,13 +444,15 @@ class CustomPolicy(MaskableActorCriticPolicy):
         )
 
     def _build_mlp_extractor(self) -> None:
-        self.mlp_extractor = EntityLatentExtractor(self.features_extractor.d_model)
+        self.mlp_extractor = EntityLatentExtractor(self.features_extractor.d_model,
+                                                   self.features_extractor.tok)
 
     def _build(self, lr_schedule) -> None:
         super()._build(lr_schedule)
         # swap the default Linear(latent_pi, n_actions) head for the pointer
         # heads, then re-create the optimizer so it covers the new parameters
-        assert self.action_space.n == N_ACTIONS
-        self.action_net = PointerActionNet(self.features_extractor.d_model)
+        tok = self.features_extractor.tok
+        assert self.action_space.n == tok.actions.N_ACTIONS
+        self.action_net = PointerActionNet(self.features_extractor.d_model, tok)
         self.optimizer = self.optimizer_class(
             self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)

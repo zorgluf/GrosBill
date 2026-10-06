@@ -11,12 +11,13 @@ possible (flat colours, no texture, no scenery) while keeping what matters to
 play — the race and power names, the token values, the bonus pictograms, and a
 recognisable figure per race.
 
-* `board3p.svg` — the 3-player map. The region shapes are a hand-simplified
-  planar map (:data:`JUNCTIONS` + :data:`BORDERS`) laid out on the same
-  597x297 pixel frame as `map3p.py`, so the region anchors and the turn track
-  of `map3p.py` stay valid. Each border is drawn once and shared by the two
-  regions it separates; `--check` verifies the adjacency against `map3p`, that
-  every anchor lies inside its region and that the regions tile the board.
+* `board<N>p.svg` — the map of each player count (2 to 5). The region shapes
+  are the planar maps of `envs/shapes.py` (hand-drawn for 3 players, traced
+  from photos of the printed boards for the others) laid out on the pixel
+  frame of `map<N>p.py`, so the region anchors and the turn track stay valid.
+  Each border is drawn once and shared by the two regions it separates;
+  `--check` verifies the adjacency against the map table, that every anchor
+  lies inside its region and that the regions tile the board.
 * `races/<key>.svg` (banner, 429x230) and `races/<key>_token.svg` (88x88).
 * `powers/<key>.svg` (badge, 115x115).
 * `pieces/<name>.svg` — coins, markers and the turn marker.
@@ -35,8 +36,9 @@ from xml.sax.saxutils import escape
 import numpy as np
 
 from .envs.classes import POWERS, RACES, PowerId, RaceId
-from .envs.map3p import (ADJACENCY, BOARD_SIZE, MAP3P, TURN_TRACK, Symbol,
-                         Terrain)
+from .envs.mapdef import Symbol, Terrain
+from .envs.maps import PLAYER_COUNTS
+from .envs.shapes import BoardShape, Cubic, Point, shape_for
 
 STATIC_DIR = Path(__file__).resolve().parent / 'static'
 
@@ -95,205 +97,8 @@ def group(body: str, x: float = 0, y: float = 0, scale: float = 1.0) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Board geometry: a hand-simplified planar map
+# Board geometry (the outlines themselves are in `envs/shapes.py`)
 # --------------------------------------------------------------------------- #
-
-W, H = BOARD_SIZE
-
-#: Points where three regions meet (or two regions and the board edge), in
-#: board pixels. Named after the regions around them (0 = the board edge).
-JUNCTIONS: dict[str, tuple[float, float]] = {
-    # on the board edge, clockwise from the top left corner
-    'e-1-2': (83, 0), 'e-2-3': (182, 0), 'e-3-4': (264, 0),
-    'e-4-5': (338, 0), 'e-5-6': (448, 0), 'e-6-7': (552, 0),
-    'e-7-18': (W, 92), 'e-18-30': (W, 190),
-    'e-29-30': (485, H), 'e-28-29': (420, H), 'e-27-28': (345, H),
-    'e-26-27': (208, H), 'e-25-26': (140, H),
-    'e-19-25': (0, 278), 'e-13-19': (0, 205), 'e-1-13': (0, 115),
-    # inside the board
-    '1-2-8': (62, 30), '1-8-13': (37, 95), '2-8-9': (110, 67),
-    '2-3-9': (185, 47), '3-9-10': (232, 52), '3-4-10': (262, 40),
-    '4-10-11': (298, 58), '4-5-11': (335, 28), '5-11-12': (368, 58),
-    '5-6-12': (430, 40), '6-7-12': (495, 60), '7-12-17': (478, 106),
-    '7-17-18': (522, 110), '17-18-24': (528, 150), '18-24-30': (565, 198),
-    '24-29-30': (505, 252), '23-24-29': (472, 218), '17-23-24': (487, 160),
-    '16-17-23': (432, 158), '12-16-17': (418, 110), '11-12-16': (372, 100),
-    '11-15-16': (345, 116), '10-11-15': (300, 118), '10-14-15': (258, 135),
-    '9-10-14': (228, 107), '9-13-14': (140, 108), '8-9-13': (125, 92),
-    '13-14-19': (150, 178), '14-19-20': (198, 203), '14-15-20': (245, 195),
-    '15-20-21': (272, 200), '15-21-22': (330, 207), '15-16-22': (357, 188),
-    '16-22-23': (405, 182), '22-23-29': (408, 232), '22-28-29': (412, 240),
-    '21-22-28': (350, 245), '21-27-28': (342, 282), '20-21-27': (280, 248),
-    '20-26-27': (205, 245), '19-20-26': (185, 225), '19-25-26': (148, 242),
-}
-
-#: Every border between two regions: ``(id, id): (junction, [points], junction)``.
-#: The points are smoothed (Catmull-Rom) when drawn.
-BORDERS: dict[tuple[int, int], tuple[str, list[tuple[float, float]], str]] = {
-    (1, 2): ('e-1-2', [(75, 12), (70, 22)], '1-2-8'),
-    (1, 8): ('1-2-8', [(45, 35), (38, 45), (38, 65), (35, 80)], '1-8-13'),
-    (1, 13): ('1-8-13', [(25, 105), (10, 112)], 'e-1-13'),
-    (2, 3): ('e-2-3', [(176, 12), (174, 25), (180, 40)], '2-3-9'),
-    (2, 8): ('1-2-8', [(75, 38), (85, 45), (92, 55), (100, 62)], '2-8-9'),
-    (2, 9): ('2-8-9', [(130, 57), (155, 50)], '2-3-9'),
-    (3, 4): ('e-3-4', [(270, 15), (270, 28)], '3-4-10'),
-    (3, 9): ('2-3-9', [(205, 50), (222, 51)], '3-9-10'),
-    (3, 10): ('3-9-10', [(245, 47)], '3-4-10'),
-    (4, 5): ('e-4-5', [(335, 15)], '4-5-11'),
-    (4, 10): ('3-4-10', [(275, 48), (288, 55)], '4-10-11'),
-    (4, 11): ('4-10-11', [(310, 45), (322, 35)], '4-5-11'),
-    (5, 6): ('e-5-6', [(435, 15)], '5-6-12'),
-    (5, 11): ('4-5-11', [(352, 45)], '5-11-12'),
-    (5, 12): ('5-11-12', [(385, 50), (410, 46)], '5-6-12'),
-    (6, 7): ('e-6-7', [(538, 15), (530, 30), (535, 45), (520, 55)], '6-7-12'),
-    (6, 12): ('5-6-12', [(450, 45), (470, 55)], '6-7-12'),
-    (7, 12): ('6-7-12', [(485, 75), (478, 90)], '7-12-17'),
-    (7, 17): ('7-12-17', [(500, 104)], '7-17-18'),
-    (7, 18): ('7-17-18', [(545, 102), (570, 94)], 'e-7-18'),
-    (8, 9): ('2-8-9', [(118, 78)], '8-9-13'),
-    (8, 13): ('1-8-13', [(55, 103), (70, 108), (95, 103), (110, 96)], '8-9-13'),
-    (9, 10): ('3-9-10', [(228, 63), (222, 75), (215, 88), (218, 98)], '9-10-14'),
-    (9, 13): ('8-9-13', [], '9-13-14'),
-    (9, 14): ('9-13-14', [(165, 110), (195, 108)], '9-10-14'),
-    (10, 11): ('4-10-11', [(294, 70), (300, 85), (298, 100)], '10-11-15'),
-    (10, 14): ('9-10-14', [(245, 125)], '10-14-15'),
-    (10, 15): ('10-14-15', [(270, 125), (290, 120)], '10-11-15'),
-    (11, 12): ('5-11-12', [(372, 72), (375, 88)], '11-12-16'),
-    (11, 15): ('10-11-15', [(320, 118)], '11-15-16'),
-    (11, 16): ('11-12-16', [(358, 105)], '11-15-16'),
-    (12, 16): ('11-12-16', [(395, 105)], '12-16-17'),
-    (12, 17): ('12-16-17', [(435, 112), (455, 110)], '7-12-17'),
-    (13, 14): ('9-13-14', [(150, 125), (152, 145)], '13-14-19'),
-    (13, 19): ('e-13-19', [(40, 207), (70, 203), (80, 190), (100, 182)],
-               '13-14-19'),
-    (14, 15): ('10-14-15', [(252, 155), (250, 175)], '14-15-20'),
-    (14, 19): ('13-14-19', [(175, 185)], '14-19-20'),
-    (14, 20): ('14-19-20', [(220, 195)], '14-15-20'),
-    (15, 16): ('11-15-16', [(352, 140), (360, 165)], '15-16-22'),
-    (15, 20): ('14-15-20', [(260, 198)], '15-20-21'),
-    (15, 21): ('15-20-21', [(290, 208), (310, 210)], '15-21-22'),
-    (15, 22): ('15-21-22', [(345, 200)], '15-16-22'),
-    (16, 17): ('12-16-17', [(425, 128), (432, 145)], '16-17-23'),
-    (16, 22): ('15-16-22', [(380, 186)], '16-22-23'),
-    (16, 23): ('16-22-23', [(418, 168)], '16-17-23'),
-    (17, 18): ('7-17-18', [(520, 130)], '17-18-24'),
-    (17, 23): ('16-17-23', [(460, 155)], '17-23-24'),
-    (17, 24): ('17-23-24', [(505, 152)], '17-18-24'),
-    (18, 24): ('17-18-24', [(548, 158), (560, 172)], '18-24-30'),
-    (18, 30): ('18-24-30', [(580, 194)], 'e-18-30'),
-    (19, 20): ('14-19-20', [(195, 215)], '19-20-26'),
-    (19, 25): ('e-19-25', [(25, 270), (55, 262), (80, 250), (100, 242),
-                           (125, 238)], '19-25-26'),
-    (19, 26): ('19-25-26', [(165, 232)], '19-20-26'),
-    (20, 21): ('15-20-21', [(278, 215), (275, 232)], '20-21-27'),
-    (20, 26): ('19-20-26', [(195, 238)], '20-26-27'),
-    (20, 27): ('20-26-27', [(230, 243), (255, 246)], '20-21-27'),
-    (21, 22): ('15-21-22', [(340, 222)], '21-22-28'),
-    (21, 27): ('20-21-27', [(305, 258), (325, 270)], '21-27-28'),
-    (21, 28): ('21-22-28', [(345, 262)], '21-27-28'),
-    (22, 23): ('16-22-23', [(400, 198), (400, 215)], '22-23-29'),
-    (22, 28): ('21-22-28', [(380, 250)], '22-28-29'),
-    (22, 29): ('22-23-29', [], '22-28-29'),
-    (23, 24): ('17-23-24', [(482, 180), (478, 200)], '23-24-29'),
-    (23, 29): ('22-23-29', [(440, 225)], '23-24-29'),
-    (24, 29): ('23-24-29', [(490, 235)], '24-29-30'),
-    (24, 30): ('18-24-30', [(555, 220), (532, 238)], '24-29-30'),
-    (25, 26): ('19-25-26', [(140, 260), (135, 275)], 'e-25-26'),
-    (26, 27): ('20-26-27', [(212, 268)], 'e-26-27'),
-    (27, 28): ('21-27-28', [], 'e-27-28'),
-    (28, 29): ('22-28-29', [(418, 260), (420, 280)], 'e-28-29'),
-    (29, 30): ('24-29-30', [(498, 272)], 'e-29-30'),
-}
-
-#: The board edge, clockwise from the top left corner: each entry is a point
-#: of the frame and the region the edge runs along *after* that point.
-FRAME: list[tuple[tuple[float, float], int]] = [
-    ((0, 0), 1), (JUNCTIONS['e-1-2'], 2), (JUNCTIONS['e-2-3'], 3),
-    (JUNCTIONS['e-3-4'], 4), (JUNCTIONS['e-4-5'], 5), (JUNCTIONS['e-5-6'], 6),
-    (JUNCTIONS['e-6-7'], 7), ((W, 0), 7), (JUNCTIONS['e-7-18'], 18),
-    (JUNCTIONS['e-18-30'], 30), ((W, H), 30), (JUNCTIONS['e-29-30'], 29),
-    (JUNCTIONS['e-28-29'], 28), (JUNCTIONS['e-27-28'], 27),
-    (JUNCTIONS['e-26-27'], 26), (JUNCTIONS['e-25-26'], 25), ((0, H), 25),
-    (JUNCTIONS['e-19-25'], 19), (JUNCTIONS['e-13-19'], 13),
-    (JUNCTIONS['e-1-13'], 1),
-]
-
-Point = tuple[float, float]
-Cubic = tuple[Point, Point, Point, Point]
-
-
-def _catmull_rom(points: list[Point]) -> list[Cubic]:
-    """Cubic Bézier segments of the Catmull-Rom spline through `points`."""
-    if len(points) == 2:
-        p0, p1 = points
-        return [(p0, p0, p1, p1)]
-    out = []
-    padded = [points[0]] + points + [points[-1]]
-    for i in range(1, len(padded) - 2):
-        a, b, c, d = padded[i - 1], padded[i], padded[i + 1], padded[i + 2]
-        c1 = (b[0] + (c[0] - a[0]) / 6, b[1] + (c[1] - a[1]) / 6)
-        c2 = (c[0] - (d[0] - b[0]) / 6, c[1] - (d[1] - b[1]) / 6)
-        out.append((b, c1, c2, c))
-    return out
-
-
-def _reverse(cubics: list[Cubic]) -> list[Cubic]:
-    return [(p1, c2, c1, p0) for (p0, c1, c2, p1) in reversed(cubics)]
-
-
-def border_cubics(key: tuple[int, int]) -> list[Cubic]:
-    """The smoothed curve of one border, from its first to its last junction."""
-    start, middle, end = BORDERS[key]
-    return _catmull_rom([JUNCTIONS[start], *middle, JUNCTIONS[end]])
-
-
-def _frame_pieces() -> dict[int, list[list[Cubic]]]:
-    """Straight board-edge pieces of every region touching the edge."""
-    pieces: dict[int, list[list[Cubic]]] = {}
-    count = len(FRAME)
-    i = 0
-    while i < count:
-        region = FRAME[i][1]
-        points = [FRAME[i][0]]
-        j = i + 1
-        while True:                         # corners keep the same region
-            point, nxt = FRAME[j % count]
-            points.append(point)
-            if nxt != region or j % count == 0:
-                break
-            j += 1
-        pieces.setdefault(region, []).append(
-            [(a, a, b, b) for a, b in zip(points, points[1:])])
-        i = j
-    return pieces
-
-
-def region_outline(region_id: int) -> list[Cubic]:
-    """Closed outline of one region, as a chain of cubic segments."""
-    pieces = [border_cubics(k) for k in BORDERS if region_id in k]
-    pieces += _frame_pieces().get(region_id, [])
-    chain = pieces.pop(0)
-    while pieces:
-        end = chain[-1][3]
-        for index, piece in enumerate(pieces):
-            if _close(piece[0][0], end):
-                chain += piece
-                break
-            if _close(piece[-1][3], end):
-                chain += _reverse(piece)
-                break
-        else:
-            raise ValueError(f'region {region_id}: outline is not closed '
-                             f'at {end}')
-        pieces.pop(index)
-    if not _close(chain[0][0], chain[-1][3]):
-        raise ValueError(f'region {region_id}: outline is not closed')
-    return chain
-
-
-def _close(a: Point, b: Point) -> bool:
-    return abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6
-
 
 def cubics_path(cubics: list[Cubic], closed: bool = True) -> str:
     """SVG path data of a chain of cubics (straight ones as `L`)."""
@@ -305,62 +110,6 @@ def cubics_path(cubics: list[Cubic], closed: bool = True) -> str:
             parts.append(f'C{fmt(c1[0])} {fmt(c1[1])} {fmt(c2[0])} '
                          f'{fmt(c2[1])} {fmt(p1[0])} {fmt(p1[1])}')
     return ' '.join(parts) + (' Z' if closed else '')
-
-
-def sample(cubics: list[Cubic], steps: int = 8) -> list[Point]:
-    """Points along a chain of cubics (for the geometry checks)."""
-    out = []
-    for p0, c1, c2, p1 in cubics:
-        for k in range(steps):
-            t = k / steps
-            u = 1 - t
-            out.append((
-                u ** 3 * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0]
-                + t ** 3 * p1[0],
-                u ** 3 * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1]
-                + t ** 3 * p1[1]))
-    return out
-
-
-def polygon_area(points: list[Point]) -> float:
-    return 0.5 * abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1)
-                         in zip(points, points[1:] + points[:1])))
-
-
-def inside(point: Point, polygon: list[Point]) -> bool:
-    """Even-odd point-in-polygon test."""
-    x, y = point
-    result = False
-    for (x0, y0), (x1, y1) in zip(polygon, polygon[1:] + polygon[:1]):
-        if (y0 > y) != (y1 > y):
-            if x < x0 + (y - y0) * (x1 - x0) / (y1 - y0):
-                result = not result
-    return result
-
-
-def check_geometry() -> list[str]:
-    """Problems of the planar map (empty list = consistent with `map3p`)."""
-    problems = []
-    drawn = {tuple(sorted(k)) for k in BORDERS}
-    truth = {tuple(sorted((a, b))) for a, ns in ADJACENCY.items() for b in ns}
-    for pair in sorted(truth - drawn):
-        problems.append(f'border {pair} missing from the drawing')
-    for pair in sorted(drawn - truth):
-        problems.append(f'border {pair} drawn but not adjacent in map3p')
-    on_edge = set(_frame_pieces())
-    for region in MAP3P:
-        if region.id in on_edge and not region.border:
-            problems.append(f'region {region.id} touches the edge but is '
-                            'not a border region')
-    total = 0.0
-    for region in MAP3P:
-        polygon = sample(region_outline(region.id))
-        total += polygon_area(polygon)
-        if not inside(region.anchor, polygon):
-            problems.append(f'anchor of region {region.id} is outside it')
-    if abs(total - W * H) > 0.002 * W * H:
-        problems.append(f'regions cover {total:.0f} px², board is {W * H}')
-    return problems
 
 
 # --------------------------------------------------------------------------- #
@@ -484,14 +233,14 @@ def _token_zone(anchor: Point) -> list[tuple[Point, float]]:
     return [((cx, cy), 21.0), ((cx + 17, cy - 16), 7.0)]
 
 
-def board_layout() -> dict[int, dict[str, Point]]:
+def board_layout(shape: BoardShape) -> dict[int, dict[str, Point]]:
     """Where the number, the symbols and the terrain glyph of every region go."""
     layout = {}
-    for region in MAP3P:
-        polygon = sample(region_outline(region.id))
+    for region in shape.map.regions:
+        polygon = shape.region_polygon(region.id)
         avoid = _token_zone(region.anchor)
-        if region.id in (1, 13, 19, 25):            # keep off the turn track
-            avoid += [(p, 15.0) for p in TURN_TRACK]
+        # keep off the turn track (a far disc never binds, see `_place`)
+        avoid += [(p, 15.0) for p in shape.map.turn_track]
         spots = {}
         spot = _place(polygon, avoid, 6.0)
         spots['number'] = spot
@@ -509,21 +258,23 @@ def board_layout() -> dict[int, dict[str, Point]]:
     return layout
 
 
-def draw_board() -> str:
-    """The whole 3-player board."""
+def draw_board(shape: BoardShape) -> str:
+    """The whole board of one player count."""
+    W, H = shape.map.board_size
     parts = [f'<rect width="{W}" height="{H}" fill="{BORDER_COLOUR}"/>']
-    for region in MAP3P:
+    for region in shape.map.regions:
         fill, _ = TERRAIN_COLOURS[region.terrain]
-        parts.append(f'<path id="r{region.id}" d="{cubics_path(region_outline(region.id))}" '
+        parts.append(f'<path id="r{region.id}" '
+                     f'd="{cubics_path(shape.region_outline(region.id))}" '
                      f'fill="{fill}"/>')
     # the borders, drawn once each over the fills
-    border_paths = ' '.join(cubics_path(border_cubics(k), closed=False)
-                            for k in BORDERS)
+    border_paths = ' '.join(cubics_path(shape.border_cubics(b), closed=False)
+                            for b in shape.borders)
     parts.append(f'<path d="{border_paths}" fill="none" stroke="{BORDER_COLOUR}" '
                  'stroke-width="2.2" stroke-linejoin="round" '
                  'stroke-linecap="round"/>')
-    layout = board_layout()
-    for region in MAP3P:
+    layout = board_layout(shape)
+    for region in shape.map.regions:
         spots = layout[region.id]
         _, dark = TERRAIN_COLOURS[region.terrain]
         if 'terrain' in spots:
@@ -538,14 +289,15 @@ def draw_board() -> str:
         parts.append(text(x, y, str(region.id), 10, fill='#2b2b2b',
                           halo='#ffffff', halo_width=2.4))
     # turn track
-    for turn, (x, y) in enumerate(TURN_TRACK, start=1):
+    for turn, (x, y) in enumerate(shape.map.turn_track, start=1):
         parts.append(f'<rect x="{x - 15}" y="{y - 8}" width="30" height="16" '
                      f'rx="6" fill="#e9e4f0" fill-opacity="0.92" '
                      f'stroke="#6d6585" stroke-width="1"/>')
         parts.append(text(x, y + 0.5, str(turn), 10, fill='#4d4566'))
     parts.append(f'<rect x="0.75" y="0.75" width="{W - 1.5}" height="{H - 1.5}" '
                  f'fill="none" stroke="{FRAME_COLOUR}" stroke-width="1.5"/>')
-    return svg_doc(W, H, '\n'.join(parts), 'Small World — 3 players')
+    return svg_doc(W, H, '\n'.join(parts),
+                   f'Small World — {shape.map.n_players} players')
 
 
 # --------------------------------------------------------------------------- #
@@ -1345,7 +1097,10 @@ COINS = (1, 3, 5, 10)
 
 def all_files() -> dict[str, str]:
     """``{path relative to static/: SVG text}`` of every asset."""
-    files = {'board3p.svg': draw_board()}
+    files = {}
+    for n in PLAYER_COUNTS:
+        shape = shape_for(n)
+        files[shape.map.board_image] = draw_board(shape)
     for race in RaceId:
         key = RACES[race].key
         files[f'races/{key}.svg'] = draw_race_banner(race)
@@ -1389,7 +1144,7 @@ def main(argv: list[str] | None = None) -> int:
                         help='verify the map and static/, write nothing')
     args = parser.parse_args(argv)
 
-    problems = check_geometry()
+    problems = [problem for n in PLAYER_COUNTS for problem in shape_for(n).check()]
     files = all_files()
     expected = {STATIC_DIR / path for path in files}
     present = {p for p in STATIC_DIR.rglob('*') if p.is_file()}

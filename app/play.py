@@ -87,6 +87,7 @@ def trained_or_base(env_name, name='best_model'):
 @dataclass
 class PlayOptions:
     suggest = False
+    smallw_players = 3
     jamaica_players = 4
 
 def create_game_page(env_class, env_name, agents_names, agent_load_names):
@@ -123,10 +124,14 @@ def stotten_page():
 
 @ui.page('/smallw')
 def smallw_page():
-    from environments.smallw.envs.smallw import SmallWorldEnv
+    from environments.smallw.envs.smallw import SmallWorldEnv, env_name_for
 
-    agents_names = ['human', 'computer 1', 'computer 2']
-    create_game_page(SmallWorldEnv, 'smallw', agents_names, ['human', 'best_model', 'best_model'])
+    # one board and one network per player count: zoo/smallw (3), zoo/smallw2/4/5
+    n_players = app.storage.user["options"].smallw_players
+    model = trained_or_base(env_name_for(n_players))
+    agents_names = ['human'] + [f'computer {i}' for i in range(1, n_players)]
+    create_game_page(lambda player_names: SmallWorldEnv(n_players, player_names),
+                     env_name_for(n_players), agents_names, ['human'] + [model] * (n_players - 1))
 
 
 @ui.page('/jamaica')
@@ -143,12 +148,35 @@ GAMES = [
     # (page, env name, title, players, blurb)
     (frouge_page, 'frouge', 'Flamme Rouge', '5 players', 'Cycling race: pick energy cards for your rouleur and sprinter, draft behind the pack, beware of exhaustion.'),
     (stotten_page, 'stotten', 'Schotten Totten', '2 players', 'Claim the stones of the border by laying the best three-card formations on your side.'),
-    (smallw_page, 'smallw', 'Small World', '3 players', 'Pick a race and power combo, conquer regions, go in decline and pick a fresh race.'),
+    (smallw_page, 'smallw', 'Small World', '2-5 players', 'Pick a race and power combo, conquer regions, go in decline and pick a fresh race.'),
     (jamaica_page, 'jamaica', 'Jamaica', '3-6 players', 'Pirate race around the island: load food, gold and powder, fight for the treasures.'),
 ]
 
-def _game_card(page, env_name, title, players, blurb):
+def _smallw_env_name(n_players):
+    from environments.smallw.envs.smallw import env_name_for
+    return env_name_for(n_players)
+
+#: Cards with a player-count selector: (counts, `PlayOptions` attribute, env name
+#: (zoo directory) of a count). Small World trains one network per count,
+#: Jamaica a single one for every count.
+PLAYER_CHOICES = {
+    'smallw': (range(2, 6), 'smallw_players', _smallw_env_name),
+    'jamaica': (range(3, 7), 'jamaica_players', lambda n_players: 'jamaica'),
+}
+
+def _ai_badge(env_name):
+    """'Trained AI' if a best_model.zip exists for `env_name` (zoo or pretrained)."""
     trained = trained_or_base(env_name) != 'base'
+    badge = ui.badge('Trained AI' if trained else 'Untrained AI',
+                     color='green-1' if trained else 'orange-1',
+                     text_color='green-9' if trained else 'orange-9').classes('px-2 py-1')
+    with badge:
+        ui.tooltip(f'{env_name}: best_model.zip' if trained
+                   else f'{env_name}: no best_model.zip yet, the AIs play the untrained base model')
+
+def _game_card(page, env_name, title, players, blurb):
+    choice = PLAYER_CHOICES.get(env_name)
+    options = app.storage.user["options"]
     with ui.card().tight().classes('w-full hover:shadow-xl transition-shadow'):
         with ui.link(target=page).classes('w-full no-underline text-inherit'):
             ui.image(f'/static/screenshots/{env_name}.webp').props('ratio=1.6').classes('w-full')
@@ -157,12 +185,20 @@ def _game_card(page, env_name, title, players, blurb):
                 ui.label(blurb).classes('text-sm text-gray-600')
         with ui.row().classes('w-full items-center gap-2 px-4 pb-4 pt-2'):
             ui.badge(players, color='blue-grey-1', text_color='blue-grey-9').classes('px-2 py-1')
-            ui.badge('Trained AI' if trained else 'Untrained AI',
-                     color='green-1' if trained else 'orange-1',
-                     text_color='green-9' if trained else 'orange-9').classes('px-2 py-1')
+            ai_badge = ui.element('div')
+
+            def show_ai_badge(n_players=None):
+                # the trained state follows the selected player count
+                ai_badge.clear()
+                with ai_badge:
+                    _ai_badge(env_name if choice is None else choice[2](n_players))
+
+            show_ai_badge(None if choice is None else getattr(options, choice[1]))
             ui.space()
-            if env_name == 'jamaica':
-                ui.select({n: f'{n} players' for n in range(3, 7)}).props('dense outlined').bind_value(app.storage.user["options"], 'jamaica_players')
+            if choice is not None:
+                counts, attribute, _ = choice
+                ui.select({n: f'{n} players' for n in counts},
+                          on_change=lambda e: show_ai_badge(e.value)).props('dense outlined').bind_value(options, attribute)
             ui.button('Play', icon='play_arrow', on_click=lambda: ui.navigate.to(page)).props('unelevated')
 
 @ui.page('/')

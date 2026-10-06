@@ -14,9 +14,15 @@ def get_environment(env_name):
         elif env_name == 'smallw':
             from environments.smallw.envs.smallw import SmallWorldEnv
             return SmallWorldEnv
+        elif env_name in ('smallw2', 'smallw4', 'smallw5'):
+            # same game on the 2/4/5-player board: own spaces, zoo and logs
+            from environments.smallw.envs import smallw
+            return {'smallw2': smallw.SmallWorld2Env, 'smallw4': smallw.SmallWorld4Env,
+                    'smallw5': smallw.SmallWorld5Env}[env_name]
         elif env_name == 'jamaica':
-            from environments.jamaica.envs.jamaica import JamaicaEnv
-            return JamaicaEnv
+            # every game drawn among 3-6 players: one network for every count
+            from environments.jamaica.envs.jamaica import JamaicaAllCountsEnv
+            return JamaicaAllCountsEnv
         else:
             raise Exception(f'No environment found for {env_name}')
     except SyntaxError as e:
@@ -37,7 +43,8 @@ def get_network_arch(env_name):
     elif env_name == 'stottentr':
         from models.stotten.models import TransformerPolicy
         return TransformerPolicy
-    elif env_name == 'smallw':
+    elif env_name in ('smallw', 'smallw2', 'smallw4', 'smallw5'):
+        # one network per player count, sized from the observation space
         from models.smallw.models import CustomPolicy
         return CustomPolicy
     elif env_name == 'jamaica':
