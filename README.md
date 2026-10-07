@@ -155,14 +155,14 @@ As reference, the following parameters are used for initial training of the best
 * For Small World:
    ```sh
    # Small World: one run per player count, each into its own app/zoo/pretrained/<env>/
-   python3 train.py -r -kl -e smallw2 -t 0.2  -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
-   python3 train.py -r -kl -e smallw  -t 0.2  -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
-   python3 train.py -r -kl -e smallw4 -t 0.15 -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
-   python3 train.py -r -kl -e smallw5 -t 0.1  -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
+   python3 train.py -r -e smallw2 -t 0.2  -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
+   python3 train.py -r -e smallw  -t 0.2  -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
+   python3 train.py -r -e smallw4 -t 0.15 -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
+   python3 train.py -r -e smallw5 -t 0.1  -g 0.998 -ent 0.005 -lr 1e-4 -os 4096 -ob 1024 -n_envs 4
    ```
 * For Jamaica:
    ```sh
-   python3 train.py -r -kl -e jamaica -t 0.15 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
+   python3 train.py -r -e jamaica -t 0.2 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
    ```
 
 Training can be fine-tuned by lowering entropy until 0 and decreasing lr from default 3e-4 into 1e-4.
