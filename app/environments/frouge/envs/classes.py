@@ -403,7 +403,10 @@ class Board():
                 n = min(n,5)
             for i in range(1,n+1):
                 if self.get_cell(player.c_pos(c_type).col+i,0) == CC :
-                    n = min(n,5)
+                    #climb within the first 5 squares : max 5
+                    #6th move or beyond entering the climb : stop just before it
+                    n = min(n,5) if i <= 5 else i - 1
+                    break
         self.set_cycl_to_pos(player_id, c_type, player.c_pos(c_type).col + n)
 
     def previous_cell(self,col,row):
