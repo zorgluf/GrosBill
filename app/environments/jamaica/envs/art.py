@@ -160,6 +160,17 @@ def chest(cx: float, cy: float, s: float = 7.0) -> str:
             f'height="{_f(s * 0.5)}" fill="{GOLD}"/></g>')
 
 
+def smoke(cx: float, cy: float, r: float = 12.0) -> str:
+    """Cannon smoke: a burst of fire under a cluster of grey puffs."""
+    puffs = ((-0.55, 0.15, 0.5), (0.5, 0.2, 0.48), (0.0, -0.35, 0.55), (-0.25, 0.5, 0.4),
+             (0.35, -0.6, 0.38), (0.0, 0.1, 0.45))
+    fire = star(cx, cy, r * 1.45, fill='#ff9800').replace('#605a00', '#e65100')
+    return fire + ''.join(
+        f'<circle cx="{_f(cx + dx * r)}" cy="{_f(cy + dy * r)}" r="{_f(k * r)}" '
+        f'fill="{"#fafafa" if i % 2 else "#9e9e9e"}" fill-opacity="0.95" stroke="#616161" '
+        f'stroke-width="0.8"/>' for i, (dx, dy, k) in enumerate(puffs))
+
+
 def star(cx: float, cy: float, r: float = 9.0, fill: str = '#fdff00') -> str:
     pts = []
     for k in range(10):

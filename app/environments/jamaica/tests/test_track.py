@@ -93,3 +93,15 @@ def test_shared_and_picklable():
     assert copy.deepcopy(t) is t
     t2 = pickle.loads(pickle.dumps(t))
     assert t2.succ == t.succ and t2.dist == t.dist
+
+
+def test_paths():
+    t = default_track()
+    outer, inner = t.path((32, 0), (38, 0), 1, 6), t.path((32, 0), (44, 0), 1, 6)
+    assert len(outer) == len(inner) == 7 and outer[0] == inner[0] == (32, 0)
+    assert outer[-1] == (38, 0) and inner[-1] == (44, 0) and outer[1] != inner[1]
+    assert t.path((47, 0), (0, 1), 1, 6) == [(47, 0), (48, 0), (49, 0), (0, 1)]   # overshoot
+    assert t.path((0, 0), (48, -1), -1, 2) == [(0, 0), (49, -1), (48, -1)]
+    assert t.path((7, 0), (5, 0), -1) == [(7, 0), (6, 0), (5, 0)]                 # shortest
+    assert t.path((5, 0), (7, 0), None) == [(5, 0), (6, 0), (7, 0)]               # either way
+    assert t.path((5, 0), (9, 0), 1, 1) == [(5, 0), (9, 0)]                       # no such route

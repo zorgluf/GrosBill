@@ -77,6 +77,14 @@ def test_last_battle_cleared_next_round():
     assert env.last_battle is None
 
 
+def test_move_into_battle_is_flagged():
+    env = make_env(4)
+    _battle(env, [4, 4])
+    assert [(m.seat, m.dst, m.battle) for m in env.move_log] == [(0, (1, 0), True)]
+    land(env, 2, 3)                                   # nobody there
+    assert env.move_log[-1].battle is False
+
+
 def test_target_choice():
     env = make_env(4)
     set_ship(env, 2, node=1)

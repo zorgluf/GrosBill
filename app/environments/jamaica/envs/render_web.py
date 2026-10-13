@@ -25,6 +25,14 @@ The board is our own drawing (`art.board_svg`, served as a data URI, so no
 static route and no reverse-proxy prefix issue) with an SVG overlay for the
 ships, the treasure chests, the legal destinations and the suggestion star.
 
+Ship moves (`env.move_log`) logged since the last repaint are animated in the
+overlay: each ship sails space by space along its route, `move_duration`
+seconds per move (one after another when a repaint shows several). They are
+CSS keyframes, which restart whenever the overlay is rebuilt, so a repaint
+without new moves shows the ships still. A move that starts a battle ends with
+cannon smoke flashing on that space, and the battle panel flashes in step the
+first time it shows that battle (`battle_flash` seconds, both).
+
 Painting is synchronous (clear and re-fill one container per section) for the
 reason explained in `environments/smallw/envs/render_web.py`: since NiceGUI 3
 `ui.refreshable(...).refresh()` only schedules the rebuild.
@@ -112,6 +120,10 @@ def action_for_board_click(env, node: int | None) -> int | None:
     return None
 
 
+#: Where a lone ship sits relative to the centre of its space.
+SHIP_OFFSET = (6, -14)
+
+
 def ship_slots(env) -> dict[int, tuple[float, float]]:
     """Drawing position of every ship (fanned out when several share a space)."""
     by_node: dict[int, list[int]] = {}
@@ -123,7 +135,7 @@ def ship_slots(env) -> dict[int, tuple[float, float]]:
         k = len(seats)
         for i, seat in enumerate(seats):
             if k == 1:
-                out[seat] = (cx + 6, cy - 14)
+                out[seat] = (cx + SHIP_OFFSET[0], cy + SHIP_OFFSET[1])
             else:
                 a = -math.pi / 2 + 2 * math.pi * i / k
                 out[seat] = (cx + 17 * math.cos(a), cy + 17 * math.sin(a) - 4)
@@ -237,8 +249,106 @@ def standings(env) -> list[dict]:
     return rows
 
 
-def board_overlay_svg(env, suggested_action: int | None = None, callback=None) -> str:
-    """Ships, treasure chests, legal destinations and the suggestion star."""
+#: Seconds of animation per ship move, and how many moves one repaint may
+#: animate (the older ones are skipped: the ships just start further along).
+MOVE_ANIMATION_S = 2.0
+MOVE_ANIMATION_MAX = 6
+#: Seconds the battle effects flash (smoke on the board, the battle panel)
+#: once a ship arrives where it starts a battle, and the length of one flash.
+BATTLE_FLASH_S = 2.0
+FLASH_PERIOD_S = 0.4
+SMOKE_CSS = ('@keyframes jm-smoke { 0% { opacity: 0; transform: scale(0.6); } '
+             '40% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0; transform: scale(1.25); } }')
+
+
+def new_moves(log: list, seen: tuple[int, int] | None) -> tuple[list, tuple[int, int]]:
+    """The entries of `log` (`env.move_log`) after the `seen` marker
+    (``(id(log), count)``, as for `new_log_lines`) and the new marker."""
+    start = seen[1] if seen is not None and seen[0] == id(log) else 0
+    return list(log[min(start, len(log)):]), (id(log), len(log))
+
+
+def move_route(env, move) -> list[int]:
+    """Spaces a move goes through, start and end included."""
+    return [node for node, _ in env.track.path(move.src, move.dst, move.d, move.steps)]
+
+
+def move_keyframes(env, moves, duration: float = MOVE_ANIMATION_S
+                   ) -> dict[int, list[tuple[float, float, float]]]:
+    """`(time, dx, dy)` keyframes of every moved ship, as offsets from where
+    it is drawn now; move `i` runs from `i * duration` to `(i + 1) * duration`,
+    one equal share per space crossed, and a ship waits in place between
+    its moves."""
+    slots = ship_slots(env)
+    last = {m.seat: i for i, m in enumerate(moves)}
+    frames: dict[int, list[tuple[float, float, float]]] = {}
+    for i, m in enumerate(moves):
+        fx, fy = slots[m.seat]
+        route = move_route(env, m)
+        out = frames.setdefault(m.seat, [])
+        for j, node in enumerate(route):
+            if i == last[m.seat] and j == len(route) - 1:
+                dx, dy = 0.0, 0.0
+            else:
+                cx, cy = board_xy(env, node)
+                dx, dy = cx + SHIP_OFFSET[0] - fx, cy + SHIP_OFFSET[1] - fy
+            if not out:
+                out.append((0.0, dx, dy))
+            t = (i + j / max(len(route) - 1, 1)) * duration
+            if out[-1][0] == t:     # one keyframe per time: browsers mishandle duplicates
+                out.pop()
+            out.append((t, dx, dy))
+    total = len(moves) * duration
+    for out in frames.values():
+        if out[-1][0] < total:
+            out.append((total, out[-1][1], out[-1][2]))
+    return frames
+
+
+def move_animation_css(frames: dict[int, list[tuple[float, float, float]]], tag: str) -> str:
+    """One `@keyframes jm-mv-<tag>-<seat>` rule per animated ship."""
+    rules_ = []
+    for seat, out in frames.items():
+        total = out[-1][0] or 1.0
+        steps = ' '.join(f'{100 * t / total:.3f}% {{ transform: translate({dx:.1f}px, {dy:.1f}px); }}'
+                         for t, dx, dy in out)
+        rules_.append(f'@keyframes jm-mv-{tag}-{seat} {{ {steps} }}')
+    rules_.append('@media (prefers-reduced-motion: reduce) { .jm-moving, .jm-smoke '
+                  '{ animation: none !important; } }')
+    return '\n'.join(rules_)
+
+
+def flash_animation(name: str, delay: float, duration: float = BATTLE_FLASH_S) -> str:
+    """CSS `animation` value: `name` repeated for `duration` s after `delay` s,
+    showing its first keyframe before and its last one after."""
+    n = max(1, round(duration / FLASH_PERIOD_S))
+    return f'{name} {duration / n:.3f}s ease-in-out {delay:.3f}s {n} both'
+
+
+def battle_arrivals(moves, duration: float = MOVE_ANIMATION_S) -> list[tuple[int, float]]:
+    """`(space, seconds)` of every animated move that starts a battle: where
+    and when (in the move animation) the ship arrives."""
+    return [(m.dst[0], (i + 1) * duration) for i, m in enumerate(moves) if m.battle]
+
+
+def battle_flash_delay(moves, battle, duration: float = MOVE_ANIMATION_S) -> float:
+    """When the battle panel should start flashing: the arrival of the move
+    that started `battle` if it is animated, else at once."""
+    if battle is None:
+        return 0.0
+    for i in range(len(moves) - 1, -1, -1):
+        m = moves[i]
+        if m.battle and m.seat == battle.attacker and m.dst[0] == battle.node:
+            return (i + 1) * duration
+    return 0.0
+
+
+def board_overlay_svg(env, suggested_action: int | None = None, callback=None,
+                      moves=(), duration: float = MOVE_ANIMATION_S, tag: str = '0',
+                      flash: float = BATTLE_FLASH_S) -> str:
+    """Ships, treasure chests, legal destinations and the suggestion star;
+    `moves` (entries of `env.move_log`) are animated, `duration` s each, and
+    those starting a battle end with `flash` s of smoke."""
     parts = []
     for node, token in env.lair_token.items():
         if token:
@@ -252,11 +362,25 @@ def board_overlay_svg(env, suggested_action: int | None = None, callback=None) -
             parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{art.SPACE_R + 5}" fill="none" '
                          f'stroke="#ffeb3b" stroke-width="3.5" stroke-dasharray="6 3"/>')
     active = active_seat(env)
+    frames = move_keyframes(env, moves, duration) if moves and duration > 0 else {}
+    smokes = battle_arrivals(moves, max(duration, 0.0)) if flash > 0 else []
+    if frames or smokes:
+        parts.append(f'<style>{move_animation_css(frames, tag)}\n{SMOKE_CSS}</style>')
     for seat, (x, y) in ship_slots(env).items():
+        if seat in frames:
+            parts.append(f'<g class="jm-moving" style="animation: jm-mv-{tag}-{seat} '
+                         f'{frames[seat][-1][0]:.3f}s linear both">')
         if seat == active:
             parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="13" fill="#ffffff" fill-opacity="0.55" '
                          f'stroke="{art.SEAT_COLORS[seat]}" stroke-width="3"/>')
         parts.append(art.ship(x, y, art.SEAT_COLORS[seat], 15, title=env.player_names[seat]))
+        if seat in frames:
+            parts.append('</g>')
+    for node, delay in smokes:
+        x, y = board_xy(env, node)
+        parts.append(f'<g class="jm-smoke" style="opacity: 0; transform-box: fill-box; '
+                     f'transform-origin: center; animation: {flash_animation("jm-smoke", delay, flash)}">'
+                     f'{art.smoke(x, y - 4, 15)}</g>')
     if suggested_action is not None and d is not None and d.kind in (Phase.MOVE_DEST, Phase.RETREAT_DEST):
         k = suggested_action - A_DEST
         if 0 <= k < len(d.data):
@@ -292,6 +416,14 @@ TOAST_CSS = """
 }
 .q-notification.jamaica-toast .q-notification__message { padding: 2px 0; }
 """
+#: The battle panel's flash (see `flash_animation`).
+BATTLE_CSS = """
+@keyframes jm-battle-flash {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 111, 0, 0); background-color: #ffffff; }
+    50% { box-shadow: 0 0 0 4px #ff6f00; background-color: #ffe0b2; }
+}
+@media (prefers-reduced-motion: reduce) { .jm-battle-flash { animation: none !important; } }
+"""
 
 
 def new_log_lines(log: list[tuple[int, str, int]], pov: int, seen: tuple[int, int] | None
@@ -320,9 +452,12 @@ SECTIONS = ('status', 'board', 'controls', 'side', 'players', 'log')
 
 
 class RenderWeb:
-    """The `jamaica` page."""
+    """The `jamaica` page; `move_duration` = seconds of animation per ship move,
+    `battle_flash` = seconds the battle effects flash (0 disables either)."""
 
-    def __init__(self):
+    def __init__(self, move_duration: float = MOVE_ANIMATION_S, battle_flash: float = BATTLE_FLASH_S):
+        self.move_duration = move_duration
+        self.battle_flash = battle_flash
         self._slots: dict[str, object] = {}
         self._env = None
         self._callback = None
@@ -330,6 +465,14 @@ class RenderWeb:
         self.die_order = 0          #: Captain's choice before clicking a card
         #: `(id(event_log), length)` of the log lines already toasted
         self._toasted: tuple[int, int] | None = None
+        #: `(id(move_log), length)` of the moves already animated, the moves
+        #: to animate at the next board build and a counter for unique names
+        self._moved: tuple[int, int] | None = None
+        self._moves: list = []
+        self._repaints = 0
+        #: the battle whose panel already flashed, and when the next flash starts
+        self._flashed = None
+        self._flash_delay = 0.0
 
     # -- actions --------------------------------------------------------- #
 
@@ -401,8 +544,11 @@ class RenderWeb:
 
     def _build_board(self):
         env = self._env
+        moves, self._moves = self._moves, []    # animate them once
         ui.interactive_image(_board_uri(env.track),
-                             content=board_overlay_svg(env, self._suggested, self._callback),
+                             content=board_overlay_svg(env, self._suggested, self._callback, moves,
+                                                       self.move_duration, str(self._repaints),
+                                                       self.battle_flash),
                              on_mouse=self._on_board, events=['click'], cross=False,
                              sanitize=False).style(f'width: {art.BOARD_W}px; max-width: 100%;')
 
@@ -487,7 +633,12 @@ class RenderWeb:
         if b is None or b.defender < 0:
             return
         live = env.battle is not None
-        with ui.card().classes('q-pa-sm'):
+        card = ui.card().classes('q-pa-sm')
+        if b is not self._flashed and self.battle_flash > 0:    # flash once per battle
+            self._flashed = b
+            card.classes('jm-battle-flash').style(
+                'animation: ' + flash_animation('jm-battle-flash', self._flash_delay, self.battle_flash))
+        with card:
             ui.label(('Battle: ' if live else 'Last battle: ')
                      + f'{env.player_names[b.attacker]} attacks {env.player_names[b.defender]}'
                      ).classes('text-subtitle2')
@@ -572,6 +723,7 @@ class RenderWeb:
 
     def init_web(self, env, callback=None):
         ui.add_css(TOAST_CSS)
+        ui.add_css(BATTLE_CSS)
         self._env, self._callback, self._suggested = env, callback, None
         slots = {}
         with ui.column().classes('w-full gap-2 q-pa-sm'):
@@ -584,6 +736,8 @@ class RenderWeb:
                     slots['players'] = ui.column().classes('w-full gap-1')
             slots['log'] = ui.column().classes('w-full gap-1')
         self._slots = slots
+        _, self._moved = new_moves(env.move_log, None)   # opening the page replays nothing
+        self._flashed = env.battle or env.last_battle
         self._paint()
         self._toast_new_lines()
 
@@ -591,5 +745,10 @@ class RenderWeb:
         self._env = env
         self._callback = callback
         self._suggested = suggested_action
+        moves, self._moved = new_moves(env.move_log, self._moved)
+        self._moves = moves[-MOVE_ANIMATION_MAX:]
+        self._flash_delay = battle_flash_delay(self._moves, env.battle or env.last_battle,
+                                               max(self.move_duration, 0.0))
+        self._repaints += 1
         self._paint()
         self._toast_new_lines()

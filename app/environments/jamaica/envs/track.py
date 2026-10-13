@@ -145,6 +145,42 @@ class Track:
         self._cache[key] = out
         return out
 
+    def path(self, src: Pos, dst: Pos, d: int | None, steps: int | None = None) -> list[Pos]:
+        """Positions crossed going from `src` to `dst` (both included).
+
+        With `steps`, a route of exactly that many steps in direction `d`
+        (fewer when it finishes in Port Royal, as `destinations` allows);
+        without, the shortest route in direction `d` (either when None).
+        `[src, dst]` when no such route exists.
+        """
+        finish = (self.pr, 1)
+        if steps is not None and d is not None:
+            stack = [[src]]
+            while stack:
+                p = stack.pop()
+                if p[-1] == dst and (len(p) - 1 == steps or dst == finish):
+                    return p
+                if len(p) - 1 < steps and p[-1] != finish:
+                    stack.extend(p + [q] for q in self.step1(*p[-1], d))
+            return [src, dst]
+        for direction in ((d,) if d is not None else (1, -1)):
+            prev = {src: None}
+            front = [src]
+            for _ in range(2 * self.n):
+                nxt = []
+                for p in front:
+                    for q in self.step1(*p, direction):
+                        if q not in prev:
+                            prev[q] = p
+                            nxt.append(q)
+                if dst in prev:
+                    out = [dst]
+                    while prev[out[-1]] is not None:
+                        out.append(prev[out[-1]])
+                    return out[::-1]
+                front = nxt
+        return [src, dst]
+
     def retreat_targets(self, pos: Pos, payable: Callable[[int], bool]) -> tuple[Pos, ...]:
         """First fully payable space on each backward route from `pos`.
 

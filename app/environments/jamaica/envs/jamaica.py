@@ -72,6 +72,16 @@ class Task(NamedTuple):
     c: int = 0
 
 
+class Move(NamedTuple):
+    """A ship changing space (`move_log`, for the web UI's animation)."""
+    seat: int
+    src: tuple[int, int]        #: (node, lap) before
+    dst: tuple[int, int]        #: (node, lap) after
+    d: int | None               #: +1 forward, -1 backward, None unknown
+    steps: int | None           #: exact length of the move, None = shortest route
+    battle: bool = False        #: the ship starts a battle where it arrives
+
+
 class Decision(NamedTuple):
     kind: int          #: Phase
     seat: int
@@ -179,6 +189,7 @@ class JamaicaEnv(GBEnv):
         self.pending = None
         self.stack: list[Task] = []
         self.event_log: list[tuple[int, str, int]] = []
+        self.move_log: list[Move] = []
 
     # ------------------------------------------------------------------ #
     # gym API
@@ -226,6 +237,7 @@ class JamaicaEnv(GBEnv):
         self.final_scores = None
         self.game_ending = False
         self.event_log = []
+        self.move_log = []
         self._last_seat = self.captain
         self._step_rewards = [0.0] * n
         self._version = 0
@@ -429,6 +441,7 @@ class JamaicaEnv(GBEnv):
     def _h_land(self, t: Task) -> None:
         ship = self.ships[t.seat]
         node, lap, via = t.a, t.b, t.c
+        moved = self._record_move(t.seat, (node, lap), via)
         ship.node, ship.lap = node, lap
         if node == self.track.pr and lap >= 1:
             ship.finished = True
@@ -440,7 +453,24 @@ class JamaicaEnv(GBEnv):
         self._push(Task(TK.PAY, t.seat, via))
         if node != self.track.pr and self.foes_at(t.seat, node):
             self.battle = Battle(attacker=t.seat, node=node)
+            if moved:
+                self.move_log[-1] = self.move_log[-1]._replace(battle=True)
             self._push(Task(TK.BATTLE, t.seat))
+
+    def _record_move(self, seat: int, dst: tuple[int, int], via: int) -> bool:
+        ship = self.ships[seat]
+        src = (ship.node, ship.lap)
+        if src == dst:
+            return False
+        d, steps = None, None
+        if via:                                     # falling back: shortest route back
+            d = -1
+        elif self.cur_action is not None and self.cur_action[0] == seat \
+                and self.cur_action[2] in (Sym.FWD, Sym.BACK):
+            d = 1 if self.cur_action[2] == Sym.FWD else -1
+            steps = self.cur_action[3]
+        self.move_log.append(Move(seat, src, dst, d, steps))
+        return True
 
     def _h_pay(self, t: Task) -> None:
         ship = self.ships[t.seat]

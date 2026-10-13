@@ -6,7 +6,7 @@ from ..envs import rules
 from ..envs.constants import (A_DEST, A_LOAD_HOLD, A_PAY_HOLD, FLOOR_SCORE, MAX_ROUNDS, Phase,
                               Power, Res, Sym, card_code, N_CODES)
 from ..envs.data import DECK
-from ..envs.jamaica import JamaicaEnv, Task, TK
+from ..envs.jamaica import JamaicaEnv, Move, Task, TK
 from .helpers import (act, at_pause, captain_action, card_action, land, make_env, random_play,
                       run_tasks, set_ship)
 
@@ -150,6 +150,21 @@ def test_fork_choice():
     assert env.pending.data == ((13, 0), (7, 0))
     env.step(A_DEST + 1)
     assert env.ships[0].node == 7
+
+
+def test_move_log():
+    env = make_env(4)
+    set_ship(env, 0, node=6, holds=[(F, 6), (G, 6)])
+    act(env, 0, 0, Sym.FWD, Sym.FWD, dice=(1, 1))
+    env.step(A_DEST + 1)
+    assert env.move_log == [Move(0, (6, 0), (7, 0), 1, 1)]
+    env = make_env(4)
+    set_ship(env, 1, node=6, holds=[(F, 1), (G, 3)])
+    land(env, 1, 7)                                  # no action: direction unknown
+    assert env.move_log == [Move(1, (6, 0), (7, 0), None, None),
+                            Move(1, (7, 0), (5, 0), -1, None)]   # short of food: falls back
+    env.reset(seed=1)
+    assert env.move_log == []
 
 
 def test_backward_first_move_goes_behind_the_start():

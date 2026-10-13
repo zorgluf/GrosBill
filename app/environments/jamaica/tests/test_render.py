@@ -142,3 +142,62 @@ def test_active_seat():
         else:   # waiting for "next": the ship that just played its turn
             assert 0 <= seat < env.n_players
             assert seat == env.resolving or env.resolving < 0
+
+
+def test_move_animation():
+    env = make_env(4, seed=11, pause=True)
+    rng = random.Random(3)
+    seen, total, animated, battles = None, 0, 0, 0
+    while not env.done:
+        env.step(-1 if env.current_player == -1 else rng.choice(env.legal_actions()))
+        moves, seen = rw.new_moves(env.move_log, seen)
+        total += len(moves)
+        for m in moves:   # every route is a chain of single steps from src to dst
+            route = env.track.path(m.src, m.dst, m.d, m.steps)
+            assert route[0] == m.src and route[-1] == m.dst
+            for a, b in zip(route, route[1:]):
+                assert b in env.track.step1(*a, m.d)
+            if m.steps is not None and m.dst != (env.track.pr, 1):
+                assert len(route) - 1 == m.steps
+        if not moves:
+            continue
+        frames = rw.move_keyframes(env, moves, 2.0)
+        assert set(frames) == {m.seat for m in moves}
+        for out in frames.values():
+            times = [t for t, _, _ in out]
+            assert times[0] == 0 and times[-1] == 2.0 * len(moves)
+            assert all(a < b for a, b in zip(times, times[1:]))   # no duplicate keyframe
+            assert out[-1][1:] == (0.0, 0.0)          # ends where the ship is drawn
+        for m in moves:
+            first = frames[m.seat][0]
+            cx, cy = rw.board_xy(env, m.src[0])
+            if m == next(x for x in moves if x.seat == m.seat):
+                fx, fy = rw.ship_slots(env)[m.seat]
+                assert (round(fx + first[1], 1), round(fy + first[2], 1)) == \
+                    (round(cx + rw.SHIP_OFFSET[0], 1), round(cy + rw.SHIP_OFFSET[1], 1))
+        svg = rw.board_overlay_svg(env, moves=moves, tag='7')
+        root = _parse(f'<svg xmlns="http://www.w3.org/2000/svg">{svg}</svg>')
+        groups = [g for g in root.iter('{http://www.w3.org/2000/svg}g') if g.get('class') == 'jm-moving']
+        assert len(groups) == len(frames)
+        assert all(f'@keyframes jm-mv-7-{seat}' in svg for seat in frames)
+        assert 'class="jm-moving"' not in rw.board_overlay_svg(env, moves=moves, duration=0)
+        smokes = [g for g in root.iter('{http://www.w3.org/2000/svg}g') if g.get('class') == 'jm-smoke']
+        assert len(smokes) == sum(m.battle for m in moves)
+        assert 'class="jm-smoke"' not in rw.board_overlay_svg(env, moves=moves, flash=0)
+        battles += sum(m.battle for m in moves)
+        animated += 1
+    assert total == len(env.move_log) > 20 and animated > 10 and battles > 0
+    assert rw.new_moves(env.move_log, seen)[0] == []
+    assert 'jm-moving' not in rw.board_overlay_svg(env)
+
+
+def test_battle_flash_timing():
+    from ..envs.jamaica import Battle, Move
+    moves = [Move(0, (0, 0), (3, 0), 1, 3), Move(1, (0, 0), (5, 0), 1, 5, battle=True),
+             Move(1, (5, 0), (7, 0), 1, 2, battle=True)]
+    assert rw.battle_arrivals(moves, 2.0) == [(5, 4.0), (7, 6.0)]
+    assert rw.battle_flash_delay(moves, Battle(attacker=1, node=5), 2.0) == 4.0
+    assert rw.battle_flash_delay(moves, Battle(attacker=1, node=7), 2.0) == 6.0
+    assert rw.battle_flash_delay(moves, Battle(attacker=2, node=7), 2.0) == 0.0   # not animated
+    assert rw.battle_flash_delay(moves, None) == 0.0
+    assert rw.flash_animation('x', 4.0, 2.0) == 'x 0.400s ease-in-out 4.000s 5 both'
