@@ -4,7 +4,9 @@ from ..envs import rules
 from ..envs.constants import (A_GIVE_CURSED, A_LOAD_HOLD, A_NOTHING, A_POWDER, A_SABRE,
                               A_STEAL_HIDDEN, A_STEAL_HOLD, A_STEAL_POWER, A_TARGET, Phase, Power,
                               Res, SABRE_KEEP, SABRE_REROLL, STAR)
-from .helpers import at_pause, land, make_env, set_ship
+from ..envs.constants import Sym, card_code
+from ..envs.jamaica import TK, Task
+from .helpers import at_pause, land, make_env, run_tasks, set_ship
 
 G, F, P, E = Res.GOLD, Res.FOOD, Res.POWDER, Res.EMPTY
 
@@ -55,6 +57,24 @@ def test_no_battle_at_port_royal():
     env = make_env(4)
     land(env, 0, 0)
     assert at_pause(env) and env.last_battle is None
+
+
+def test_last_battle_cleared_next_turn():
+    env = make_env(4)
+    _battle(env, [4, 4])
+    assert at_pause(env) and env.last_battle is not None   # still shown during the pause
+    # next seat's turn: loads food at Port Royal, no battle -> the panel goes away
+    run_tasks(env, Task(TK.RESOLVE, 2), dice=(1, 1),
+              card=card_code(Sym.FOOD, Sym.FOOD), seat=2)
+    assert env.battle is None and env.last_battle is None
+
+
+def test_last_battle_cleared_next_round():
+    env = make_env(4)
+    _battle(env, [4, 4])
+    assert env.last_battle is not None
+    run_tasks(env, Task(TK.ROUND_START))
+    assert env.last_battle is None
 
 
 def test_target_choice():

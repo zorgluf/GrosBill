@@ -365,6 +365,7 @@ class JamaicaEnv(GBEnv):
         self.order = [(self.captain + k) % n for k in range(n)]
         self.resolving = -1
         self.cur_action = None
+        self.last_battle = None
         for ship in self.ships:
             ship.chosen = -1
             ship.revealed = False
@@ -385,6 +386,7 @@ class JamaicaEnv(GBEnv):
         ship.revealed = True
         ship.discard.append(ship.chosen)
         self.resolving = t.seat
+        self.last_battle = None         # the UI only shows the battle of the current turn
         m, e = card_syms(ship.chosen)
         self._log(f'{self._name(t.seat)} reveals {SYM_NAMES[m]} (morning {self.dice[0]}) / '
                   f'{SYM_NAMES[e]} (evening {self.dice[1]})')
