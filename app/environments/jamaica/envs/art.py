@@ -135,19 +135,33 @@ def res_icon(res: int, cx: float, cy: float, r: float) -> str:
 
 
 def ship(cx: float, cy: float, color: str, size: float = 14.0, title: str = '') -> str:
-    """A small pirate ship in a seat colour."""
+    """A small pirate ship in a seat colour: hull, sails and pennant all in
+    the colour, inside a white outline that keeps it readable on the sea."""
     s = size
     t = f'<title>{escape(title)}</title>' if title else ''
-    return (f'<g>{t}<path d="M{_f(cx - s * 0.75)},{_f(cy + s * 0.1)} L{_f(cx + s * 0.75)},'
-            f'{_f(cy + s * 0.1)} L{_f(cx + s * 0.45)},{_f(cy + s * 0.5)} L{_f(cx - s * 0.5)},'
-            f'{_f(cy + s * 0.5)} Z" fill="#5d4037" stroke="#1b0000" stroke-width="1"/>'
-            f'<line x1="{_f(cx)}" y1="{_f(cy + s * 0.1)}" x2="{_f(cx)}" y2="{_f(cy - s * 0.8)}" '
+    hull = (f'M{_f(cx - s * 0.85)},{_f(cy + s * 0.02)} L{_f(cx + s * 0.85)},{_f(cy + s * 0.02)} '
+            f'L{_f(cx + s * 0.52)},{_f(cy + s * 0.55)} L{_f(cx - s * 0.55)},{_f(cy + s * 0.55)} Z')
+    main = (f'M{_f(cx + 1)},{_f(cy - s * 0.78)} L{_f(cx + s * 0.66)},{_f(cy - s * 0.1)} '
+            f'L{_f(cx + 1)},{_f(cy - s * 0.1)} Z')
+    fore = (f'M{_f(cx - 1)},{_f(cy - s * 0.62)} L{_f(cx - s * 0.55)},{_f(cy - s * 0.1)} '
+            f'L{_f(cx - 1)},{_f(cy - s * 0.1)} Z')
+    flag = (f'M{_f(cx)},{_f(cy - s * 1.1)} L{_f(cx + s * 0.45)},{_f(cy - s * 1.0)} '
+            f'L{_f(cx)},{_f(cy - s * 0.88)} Z')
+    halo = 'fill="#ffffff" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"'
+    paint = f'fill="{color}" stroke="#1b1b1b" stroke-width="0.9" stroke-linejoin="round"'
+    return (f'<g>{t}'
+            # white outline behind every part
+            f'<path d="{hull}" {halo}/><path d="{main}" {halo}/><path d="{fore}" {halo}/>'
+            f'<path d="{flag}" {halo}/>'
+            f'<line x1="{_f(cx)}" y1="{_f(cy + s * 0.02)}" x2="{_f(cx)}" y2="{_f(cy - s * 1.1)}" '
+            f'stroke="#ffffff" stroke-width="3.2"/>'
+            f'<line x1="{_f(cx)}" y1="{_f(cy + s * 0.02)}" x2="{_f(cx)}" y2="{_f(cy - s * 1.1)}" '
             f'stroke="#3e2723" stroke-width="1.4"/>'
-            f'<path d="M{_f(cx + 1)},{_f(cy - s * 0.75)} L{_f(cx + s * 0.62)},{_f(cy - s * 0.05)} '
-            f'L{_f(cx + 1)},{_f(cy - s * 0.05)} Z" fill="{color}" stroke="#ffffff" stroke-width="1"/>'
-            f'<path d="M{_f(cx - 1)},{_f(cy - s * 0.6)} L{_f(cx - s * 0.5)},{_f(cy - s * 0.05)} '
-            f'L{_f(cx - 1)},{_f(cy - s * 0.05)} Z" fill="{color}" stroke="#ffffff" stroke-width="1" '
-            f'opacity="0.85"/></g>')
+            f'<path d="{hull}" {paint}/>'
+            f'<line x1="{_f(cx - s * 0.78)}" y1="{_f(cy + s * 0.17)}" x2="{_f(cx + s * 0.76)}" '
+            f'y2="{_f(cy + s * 0.17)}" stroke="#000000" stroke-opacity="0.35" stroke-width="1"/>'
+            f'<path d="{main}" {paint}/><path d="{fore}" {paint} fill-opacity="0.85"/>'
+            f'<path d="{flag}" {paint}/></g>')
 
 
 def chest(cx: float, cy: float, s: float = 7.0) -> str:
