@@ -221,4 +221,5 @@ def index():
 
 if __name__ in {"__main__", "__mp_main__"}:
 
-    ui.run(title='GrosBill', storage_secret='private key almost impossible to guess')
+    ui.run(title='GrosBill', favicon=Path(__file__).parent / 'static' / 'favicon.ico',
+           storage_secret='private key almost impossible to guess')
