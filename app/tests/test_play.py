@@ -2,8 +2,6 @@ import asyncio
 
 import pytest
 
-pytestmark = pytest.mark.nicegui_main_file('play.py')
-
 from nicegui import app, ui
 
 
