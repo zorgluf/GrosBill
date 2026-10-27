@@ -7,7 +7,6 @@ from utils.agents import Agent
 from utils.files import load_model
 from typing import List, Tuple
 from utils.env import GBEnv
-from dataclasses import dataclass
 from pathlib import Path
 
 app.add_static_files('/static', Path(__file__).parent / 'static')
@@ -15,7 +14,6 @@ app.add_static_files('/static', Path(__file__).parent / 'static')
 @ui.refreshable
 def _gui_generic_buttons(env: GBEnv, callback = None):
     ui.button("Next step", on_click=lambda: callback(None)).bind_visibility_from(env, "current_player", backward=lambda current_player: current_player == -1)
-    ui.button("New game", on_click=lambda: (_clear_saved_game(env.name), ui.navigate.to(_page_route(env.name))))
     with ui.dialog() as dialog, ui.card():
         ui.label().bind_visibility_from(env,"done").bind_text_from(env,"winner_player",lambda w: f"Player {env.player_names[env.winner_player]} win !" if env.winner_player != None else "Winner undetermined.")
         ui.button("Close game", on_click=lambda: ui.navigate.to("/")).bind_visibility_from(env, "done")
@@ -74,7 +72,7 @@ def load_agents(env, agent_names, device):
             agent_obj = Agent(f"{agent} {i}", ppo_model)
         agents.append(agent_obj)
 
-    if app.storage.user.get("options") and app.storage.user["options"].suggest:
+    if _options()['suggest']:
         # load best agent for suggestion
         ppo_model = load_model(env, f'{trained_or_base(env.name)}.zip', device)
         agent_obj = Agent(f"Suggest Agent", ppo_model)
@@ -108,18 +106,6 @@ def _save_game(env: GBEnv):
 
 def _saved_game(env_name: str):
     return app.storage.user.get(SAVED_GAMES_KEY, {}).get(env_name)
-
-def _has_saved_game(env_name: str) -> bool:
-    """True if a saved game exists for `env_name` or any of its variants
-    (Small World stores one game per player count)."""
-    saved_games = app.storage.user.get(SAVED_GAMES_KEY, {})
-    if env_name == 'smallw':
-        return any(k.startswith('smallw') for k in saved_games)
-    return env_name in saved_games
-
-def _page_route(env_name: str) -> str:
-    """URL of the game page: the Small World variants (smallw2/4/5) share /smallw."""
-    return '/smallw' if env_name.startswith('smallw') else f'/{env_name}'
 
 def _clear_saved_game(env_name: str):
     saved_games = app.storage.user.get(SAVED_GAMES_KEY, {})
@@ -161,19 +147,18 @@ def create_game_page(make_env, env_name, agents_names, agent_load_names):
     if saved is None:
         _save_game(env)
     # play game
-    play_step(env, agents, pov_player=pov_player, suggest=_options().suggest)
+    play_step(env, agents, pov_player=pov_player, suggest=_options()['suggest'])
 
-@dataclass
-class PlayOptions:
-    suggest = False
-    smallw_players = 3
-    jamaica_players = 4
+#: Default per-user play options. They are kept as a plain dict: the user storage
+#: is persisted as JSON, so an object would come back as a dict after a restart.
+DEFAULT_OPTIONS = {'suggest': False, 'smallw_players': 3, 'jamaica_players': 4}
 
-def _options() -> PlayOptions:
-    """The per-user play options, created on first access."""
-    if "options" not in app.storage.user:
-        app.storage.user["options"] = PlayOptions()
-    return app.storage.user["options"]
+def _options() -> dict:
+    """The per-user play options, missing keys filled with their default."""
+    options = app.storage.user.setdefault('options', {})
+    for key, value in DEFAULT_OPTIONS.items():
+        options.setdefault(key, value)
+    return options
 
 @ui.page('/frouge')
 def frouge_page():
@@ -196,7 +181,7 @@ def smallw_page():
     from environments.smallw.envs.smallw import SmallWorldEnv, env_name_for
 
     # one board and one network per player count: zoo/smallw (3), zoo/smallw2/4/5
-    n_players = _options().smallw_players
+    n_players = _options()['smallw_players']
     model = trained_or_base(env_name_for(n_players))
     agents_names = ['human'] + [f'computer {i}' for i in range(1, n_players)]
     create_game_page(lambda n, names: SmallWorldEnv(n, names),
@@ -207,7 +192,7 @@ def smallw_page():
 def jamaica_page():
     from environments.jamaica.envs.jamaica import JamaicaEnv
 
-    n_players = _options().jamaica_players
+    n_players = _options()['jamaica_players']
     model = trained_or_base('jamaica')
     agents_names = ['human'] + [f'computer {i}' for i in range(1, n_players)]
     create_game_page(lambda n, names: JamaicaEnv(n, names), 'jamaica', agents_names,
@@ -226,7 +211,7 @@ def _smallw_env_name(n_players):
     from environments.smallw.envs.smallw import env_name_for
     return env_name_for(n_players)
 
-#: Cards with a player-count selector: (counts, `PlayOptions` attribute, env name
+#: Cards with a player-count selector: (counts, options key, env name
 #: (zoo directory) of a count). Small World trains one network per count,
 #: Jamaica a single one for every count.
 PLAYER_CHOICES = {
@@ -244,7 +229,21 @@ def _ai_badge(env_name):
         ui.tooltip(f'{env_name}: best_model.zip' if trained
                    else f'{env_name}: no best_model.zip yet, the AIs play the untrained base model')
 
-def _game_card(page, env_name, title, players, blurb):
+def _confirm_drop_dialog():
+    """The home page dialog confirming the deletion of a saved game: returns an
+    async function `confirm(title)`, True if the player confirmed."""
+    with ui.dialog() as dialog, ui.card():
+        label = ui.label()
+        with ui.row().classes('w-full justify-end'):
+            ui.button('Cancel', on_click=dialog.close).props('flat')
+            ui.button('Abandon game', color='negative', on_click=lambda: dialog.submit(True))
+
+    async def confirm(title):
+        label.text = f'Abandon your {title} game in progress?'
+        return await dialog
+    return confirm
+
+def _game_card(page, env_name, title, players, blurb, confirm_drop):
     choice = PLAYER_CHOICES.get(env_name)
     options = _options()
     with ui.card().tight().classes('w-full hover:shadow-xl transition-shadow'):
@@ -255,22 +254,31 @@ def _game_card(page, env_name, title, players, blurb):
                 ui.label(blurb).classes('text-sm text-gray-600')
         with ui.row().classes('w-full items-center gap-2 px-4 pb-4 pt-2'):
             ui.badge(players, color='blue-grey-1', text_color='blue-grey-9').classes('px-2 py-1')
-            ai_badge = ui.element('div')
+            badges = ui.row().classes('items-center gap-2')
 
-            def show_ai_badge(n_players=None):
-                # the trained state follows the selected player count
-                ai_badge.clear()
-                with ai_badge:
-                    _ai_badge(env_name if choice is None else choice[2](n_players))
+            async def drop_saved_game(count_env_name, n_players):
+                if await confirm_drop(title):
+                    _clear_saved_game(count_env_name)
+                    show_badges(n_players)
 
-            show_ai_badge(None if choice is None else getattr(options, choice[1]))
-            if _has_saved_game(env_name):
-                ui.badge('Game in progress', color='green-1', text_color='green-9').classes('px-2 py-1').tooltip('Your saved game will resume when you click Play')
+            def show_badges(n_players=None):
+                # the trained state and the saved game follow the selected player count
+                count_env_name = env_name if choice is None else choice[2](n_players)
+                badges.clear()
+                with badges:
+                    _ai_badge(count_env_name)
+                    if _saved_game(count_env_name) is not None:
+                        with ui.badge('Game in progress', color='orange', text_color='white').classes('px-2 py-1 gap-1'):
+                            ui.tooltip('Your saved game will resume when you click Play')
+                            ui.button(icon='close', on_click=lambda: drop_saved_game(count_env_name, n_players)) \
+                                .props('flat round dense size=xs color=white').tooltip('Abandon this game')
+
+            show_badges(None if choice is None else options[choice[1]])
             ui.space()
             if choice is not None:
-                counts, attribute, _ = choice
+                counts, key, _ = choice
                 ui.select({n: f'{n} players' for n in counts},
-                          on_change=lambda e: show_ai_badge(e.value)).props('dense outlined').bind_value(options, attribute)
+                          on_change=lambda e: show_badges(e.value)).props('dense outlined').bind_value(options, key)
             ui.button('Play', icon='play_arrow', on_click=lambda: ui.navigate.to(page)).props('unelevated')
 
 @ui.page('/')
@@ -286,10 +294,11 @@ def index():
                 ui.label('GrosBill').classes('text-3xl font-bold text-gray-900')
                 ui.label('Play board games against self-play trained agents').classes('text-gray-600')
             ui.space()
-            ui.switch('Suggest actions').bind_value(app.storage.user["options"], 'suggest')
+            ui.switch('Suggest actions').bind_value(_options(), 'suggest')
         with ui.grid().classes('w-full grid-cols-1 md:grid-cols-2 gap-6'):
+            confirm_drop = _confirm_drop_dialog()
             for game in GAMES:
-                _game_card(*game)
+                _game_card(*game, confirm_drop)
 
 if __name__ in {"__main__", "__mp_main__"}:
 
