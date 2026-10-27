@@ -174,6 +174,10 @@ class FlammeRougeEnv(GBEnv):
     def score_game(self):
         return self._terminal_rewards()
 
+    def final_ranking(self):
+        """Player indices from first to last place, ranked by each team's frontmost rider."""
+        return self._finish_order()
+
 
     @property
     def current_player_obj(self):

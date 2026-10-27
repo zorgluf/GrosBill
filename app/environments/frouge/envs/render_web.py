@@ -174,7 +174,12 @@ class RenderWeb:
                                 ui.label("X").style("background-color: red")
                     else:
                         ui.label("-")
-        ui.label(f"Player {env.score_game().index(max(env.score_game()))+1} WIN !!!!").bind_visibility_from(env, "done").classes("text-h6").style("color: red")
+        with ui.column().bind_visibility_from(env, "done"):
+            ui.label("Final ranking").classes("text-h6")
+            for rank, player_idx in enumerate(env.final_ranking()):
+                with ui.row().classes("items-center gap-2"):
+                    ui.label(f"{rank+1}.").classes("text-bold")
+                    ui.label(env.player_names[player_idx]).style(f"color: {_get_player_color(player_idx+1)}")
 
     @ui.refreshable
     def _gui_human_actions(self, env: FlammeRougeEnv, callback, suggested_action = None):
