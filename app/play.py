@@ -15,6 +15,7 @@ app.add_static_files('/static', Path(__file__).parent / 'static')
 @ui.refreshable
 def _gui_generic_buttons(env: GBEnv, callback = None):
     ui.button("Next step", on_click=lambda: callback(None)).bind_visibility_from(env, "current_player", backward=lambda current_player: current_player == -1)
+    ui.button("New game", on_click=lambda: (_clear_saved_game(env.name), ui.navigate.to(_page_route(env.name))))
     with ui.dialog() as dialog, ui.card():
         ui.label().bind_visibility_from(env,"done").bind_text_from(env,"winner_player",lambda w: f"Player {env.player_names[env.winner_player]} win !" if env.winner_player != None else "Winner undetermined.")
         ui.button("Close game", on_click=lambda: ui.navigate.to("/")).bind_visibility_from(env, "done")
@@ -45,6 +46,10 @@ def play_step(env: GBEnv, agents: List[Agent], pov_player: int, human_action = N
                 action = current_player.choose_action(env, choose_best_action = choose_best_action)
 
         obs, _, done, _ , info = env.step(action)
+        if done:
+            _clear_saved_game(env.name)
+        else:
+            _save_game(env)
         if info['next_step_no_action']:
             env.render(callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest), pov_player = pov_player)
             _gui_generic_buttons.refresh(env, callback=lambda a: play_step(env, agents, pov_player, a, suggest=suggest))
@@ -69,7 +74,7 @@ def load_agents(env, agent_names, device):
             agent_obj = Agent(f"{agent} {i}", ppo_model)
         agents.append(agent_obj)
 
-    if app.storage.user["options"].suggest:
+    if app.storage.user.get("options") and app.storage.user["options"].suggest:
         # load best agent for suggestion
         ppo_model = load_model(env, f'{trained_or_base(env.name)}.zip', device)
         agent_obj = Agent(f"Suggest Agent", ppo_model)
@@ -84,42 +89,106 @@ def trained_or_base(env_name, name='best_model'):
             return name
     return 'base'
 
+#: Key in the user storage holding the saved games, one entry per env name.
+#: `app.storage.user` is kept on the server, keyed by the browser session: the
+#: game survives a disconnection and a browser restart that restores the session.
+SAVED_GAMES_KEY = 'saved_games'
+
+def _save_game(env: GBEnv):
+    """Persist the current game in the user storage so it survives a reload."""
+    saved_games = app.storage.user.get(SAVED_GAMES_KEY, {})
+    saved_games[env.name] = {
+        'state': env.save_state(),
+        'agents_names': env.player_names,
+        'agent_load_names': env.play_meta['agent_load_names'],
+        'pov_player': env.play_meta['pov_player'],
+        'n_players': env.n_players,
+    }
+    app.storage.user[SAVED_GAMES_KEY] = saved_games
+
+def _saved_game(env_name: str):
+    return app.storage.user.get(SAVED_GAMES_KEY, {}).get(env_name)
+
+def _has_saved_game(env_name: str) -> bool:
+    """True if a saved game exists for `env_name` or any of its variants
+    (Small World stores one game per player count)."""
+    saved_games = app.storage.user.get(SAVED_GAMES_KEY, {})
+    if env_name == 'smallw':
+        return any(k.startswith('smallw') for k in saved_games)
+    return env_name in saved_games
+
+def _page_route(env_name: str) -> str:
+    """URL of the game page: the Small World variants (smallw2/4/5) share /smallw."""
+    return '/smallw' if env_name.startswith('smallw') else f'/{env_name}'
+
+def _clear_saved_game(env_name: str):
+    saved_games = app.storage.user.get(SAVED_GAMES_KEY, {})
+    if env_name in saved_games:
+        del saved_games[env_name]
+        app.storage.user[SAVED_GAMES_KEY] = saved_games
+
+def create_game_page(make_env, env_name, agents_names, agent_load_names):
+    """Set up a game page. `make_env(n_players, player_names)` builds the env.
+    If a saved game exists for `env_name` in the browser storage, it is resumed."""
+    saved = _saved_game(env_name)
+    if saved is not None:
+        try:
+            agents_names = saved['agents_names']
+            agent_load_names = saved['agent_load_names']
+            env = make_env(saved['n_players'], agents_names)
+            env.restore_state(saved['state'])
+            pov_player = saved['pov_player']
+        except Exception:
+            # stale or incompatible save (e.g. env changed since): start fresh
+            _clear_saved_game(env_name)
+            saved = None
+    if saved is None:
+        # random seating order: shuffle display names and models together
+        seats = list(zip(agents_names, agent_load_names))
+        random.shuffle(seats)
+        agents_names, agent_load_names = [list(s) for s in zip(*seats)]
+        env = make_env(len(agents_names), agents_names)
+        # set seed
+        seed = random.randint(0,1000)
+        env.reset(seed = seed)
+        pov_player = agents_names.index('human')
+    # load agents
+    agents = load_agents(env, agent_load_names, "cpu")
+    env.play_meta = {'pov_player': pov_player, 'agent_load_names': agent_load_names}
+    # start gui
+    env.nicegui_page()
+    _gui_generic_buttons(env,)
+    if saved is None:
+        _save_game(env)
+    # play game
+    play_step(env, agents, pov_player=pov_player, suggest=_options().suggest)
+
 @dataclass
 class PlayOptions:
     suggest = False
     smallw_players = 3
     jamaica_players = 4
 
-def create_game_page(env_class, env_name, agents_names, agent_load_names):
-    # random seating order: shuffle display names and models together
-    seats = list(zip(agents_names, agent_load_names))
-    random.shuffle(seats)
-    agents_names, agent_load_names = [list(s) for s in zip(*seats)]
-    env = env_class(player_names=agents_names)
-    # set seed
-    seed = random.randint(0,1000)
-    env.reset(seed = seed)
-    # load agents
-    agents = load_agents(env, agent_load_names, "cpu")
-    # start gui
-    env.nicegui_page()
-    _gui_generic_buttons(env,)
-    # play game
-    play_step(env, agents, pov_player=agents_names.index('human'), suggest=app.storage.user["options"].suggest)
+def _options() -> PlayOptions:
+    """The per-user play options, created on first access."""
+    if "options" not in app.storage.user:
+        app.storage.user["options"] = PlayOptions()
+    return app.storage.user["options"]
 
 @ui.page('/frouge')
 def frouge_page():
     from environments.frouge.envs.frouge import FlammeRougeEnv
 
     agents_names = ['human', 'best_model1', 'best_model2', 'best_model3', 'best_model4']
-    create_game_page(FlammeRougeEnv, 'frouge', agents_names, ['human', 'best_model', 'best_model', 'best_model', 'best_model'])
+    create_game_page(lambda n, names: FlammeRougeEnv(names), 'frouge', agents_names,
+                     ['human', 'best_model', 'best_model', 'best_model', 'best_model'])
 
 @ui.page('/stotten')
 def stotten_page():
     from environments.stotten.envs.stotten import SchottenTottenEnv
 
     agents_names = ['human', 'computer']
-    create_game_page(SchottenTottenEnv, 'stotten', agents_names, ['human', 'best_model'])
+    create_game_page(lambda n, names: SchottenTottenEnv(names), 'stotten', agents_names, ['human', 'best_model'])
 
 
 @ui.page('/smallw')
@@ -127,10 +196,10 @@ def smallw_page():
     from environments.smallw.envs.smallw import SmallWorldEnv, env_name_for
 
     # one board and one network per player count: zoo/smallw (3), zoo/smallw2/4/5
-    n_players = app.storage.user["options"].smallw_players
+    n_players = _options().smallw_players
     model = trained_or_base(env_name_for(n_players))
     agents_names = ['human'] + [f'computer {i}' for i in range(1, n_players)]
-    create_game_page(lambda player_names: SmallWorldEnv(n_players, player_names),
+    create_game_page(lambda n, names: SmallWorldEnv(n, names),
                      env_name_for(n_players), agents_names, ['human'] + [model] * (n_players - 1))
 
 
@@ -138,10 +207,11 @@ def smallw_page():
 def jamaica_page():
     from environments.jamaica.envs.jamaica import JamaicaEnv
 
-    n_players = app.storage.user["options"].jamaica_players
+    n_players = _options().jamaica_players
     model = trained_or_base('jamaica')
     agents_names = ['human'] + [f'computer {i}' for i in range(1, n_players)]
-    create_game_page(JamaicaEnv, 'jamaica', agents_names, ['human'] + [model] * (n_players - 1))
+    create_game_page(lambda n, names: JamaicaEnv(n, names), 'jamaica', agents_names,
+                     ['human'] + [model] * (n_players - 1))
 
 
 GAMES = [
@@ -176,7 +246,7 @@ def _ai_badge(env_name):
 
 def _game_card(page, env_name, title, players, blurb):
     choice = PLAYER_CHOICES.get(env_name)
-    options = app.storage.user["options"]
+    options = _options()
     with ui.card().tight().classes('w-full hover:shadow-xl transition-shadow'):
         with ui.link(target=page).classes('w-full no-underline text-inherit'):
             ui.image(f'/static/screenshots/{env_name}.webp').props('ratio=1.6').classes('w-full')
@@ -194,6 +264,8 @@ def _game_card(page, env_name, title, players, blurb):
                     _ai_badge(env_name if choice is None else choice[2](n_players))
 
             show_ai_badge(None if choice is None else getattr(options, choice[1]))
+            if _has_saved_game(env_name):
+                ui.badge('Game in progress', color='green-1', text_color='green-9').classes('px-2 py-1').tooltip('Your saved game will resume when you click Play')
             ui.space()
             if choice is not None:
                 counts, attribute, _ = choice
@@ -204,7 +276,7 @@ def _game_card(page, env_name, title, players, blurb):
 @ui.page('/')
 def index():
     #init options on user scope
-    app.storage.user["options"] = PlayOptions()
+    _options()
 
     ui.query('body').classes('bg-slate-100')
     with ui.column().classes('w-full max-w-6xl mx-auto p-6 gap-6'):

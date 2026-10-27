@@ -1,4 +1,7 @@
 #Custom GrosBill env
+import base64
+import pickle
+
 import gymnasium as gym
 
 class GBEnv(gym.Env):
@@ -97,3 +100,13 @@ class GBEnv(gym.Env):
 
     def nicegui_page(self):
         raise NotImplementedError("Subclasses must implement nicegui page rendering.")
+
+    def save_state(self) -> str:
+        """Serialize the full game state to a browser-storable string."""
+        exclude = {'render_web', 'play_meta'}
+        state = {k: v for k, v in self.__dict__.items() if k not in exclude}
+        return base64.b64encode(pickle.dumps(state)).decode('ascii')
+
+    def restore_state(self, data: str):
+        """Restore a game state previously returned by `save_state`."""
+        self.__dict__.update(pickle.loads(base64.b64decode(data)))
