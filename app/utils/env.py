@@ -95,5 +95,14 @@ class GBEnv(gym.Env):
         """
         raise NotImplementedError("Subclasses must implement action_masks method.")
 
+    def final_ranking(self) -> list[int]:
+        """
+        Player indices from first to last place once the game is done (empty if no winner yet).
+        Default: the winner then the others in seat order, exact for 2 players. Multiplayer games override it.
+        """
+        if self.winner_player is None:
+            return []
+        return [self.winner_player] + [p for p in range(self.n_players) if p != self.winner_player]
+
     def nicegui_page(self):
         raise NotImplementedError("Subclasses must implement nicegui page rendering.")

@@ -175,8 +175,8 @@ class FlammeRougeEnv(GBEnv):
         return self._terminal_rewards()
 
     def final_ranking(self):
-        """Player indices from first to last place, ranked by each team's frontmost rider."""
-        return self._finish_order()
+        """Player indices from first to last place, ranked by each team's frontmost rider. Empty before the end."""
+        return self._finish_order() if self.done else []
 
 
     @property

@@ -16,13 +16,12 @@ app.add_static_files('/static', Path(__file__).parent / 'static')
 def _gui_generic_buttons(env: GBEnv, callback = None):
     ui.button("Next step", on_click=lambda: callback(None)).bind_visibility_from(env, "current_player", backward=lambda current_player: current_player == -1)
     with ui.dialog() as dialog, ui.card():
-        if hasattr(env, 'final_ranking'):
-            ui.label().bind_visibility_from(env, "done").bind_text_from(
-                env, "done",
-                lambda done: '\n'.join(f"{rank+1}. {env.player_names[player_idx]}"
-                                      for rank, player_idx in enumerate(env.final_ranking())) if done else "")
-        else:
-            ui.label().bind_visibility_from(env,"done").bind_text_from(env,"winner_player",lambda w: f"Player {env.player_names[env.winner_player]} win !" if env.winner_player != None else "Winner undetermined.")
+        if env.done:
+            ranking = env.final_ranking()
+            if len(ranking) == 0:
+                ui.label("Winner undetermined.")
+            for rank, player_idx in enumerate(ranking):
+                ui.label(f"{rank+1}. {env.player_names[player_idx]}")
         ui.button("Close game", on_click=lambda: ui.navigate.to("/")).bind_visibility_from(env, "done")
     if env.done == True:
         dialog.open()

@@ -482,6 +482,7 @@ class SmallWorldEnv(GBEnv):
         self.turns_taken = 0
         self.current_player = 0
         self.winner_player = None
+        self.ranking = None
         self.done = False
         self.event_log = []
         self.turn_events = []
@@ -1570,6 +1571,10 @@ class SmallWorldEnv(GBEnv):
                 return
         self._begin_turn((seat + 1) % self.n_players)
 
+    def final_ranking(self) -> list[int]:
+        """Seats from first to last place (coins, then tokens on the board), empty before the end."""
+        return list(self.ranking or [])
+
     def _end_game(self) -> None:
         """Final standings, winner and terminal rewards."""
         self.done = True
@@ -1580,6 +1585,7 @@ class SmallWorldEnv(GBEnv):
         order = sorted(range(self.n_players),
                        key=lambda s: (-coins[s], -tokens[s], s))
         self.winner_player = order[0]
+        self.ranking = order
 
         table = self.rank_rewards()
         rewards = [0.0] * self.n_players

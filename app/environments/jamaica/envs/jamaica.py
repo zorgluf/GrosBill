@@ -233,6 +233,7 @@ class JamaicaEnv(GBEnv):
         self.last_battle = None
         self.done = False
         self.winner_player = None
+        self.ranking = None
         self.terminal_rewards = None
         self.final_scores = None
         self.game_ending = False
@@ -872,6 +873,10 @@ class JamaicaEnv(GBEnv):
             self._step_rewards[i] += phi[i] - self._phi[i]
         self._phi = phi
 
+    def final_ranking(self) -> list[int]:
+        """Seats from first to last place (score, then distance left), empty before the end."""
+        return list(self.ranking or [])
+
     def _end_game(self) -> None:
         n = self.n_players
         self.done = True
@@ -880,6 +885,7 @@ class JamaicaEnv(GBEnv):
         rem = [self.track.remaining(s.node, s.lap) for s in self.ships]
         order = sorted(range(n), key=lambda i: (-scores[i], rem[i], i))
         self.winner_player = order[0]
+        self.ranking = order
         table = rank_rewards(n)
         rewards = [0.0] * n
         rank = 0
