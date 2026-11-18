@@ -70,10 +70,11 @@ def load_model(env, name, device):
                 logger.error(e)
     
     elif name == 'base.zip':
+        policy = get_network_arch(env.name)     # no policy for this env: fail now, not in the retry loop
         cont = True
         while cont:
             try:
-                ppo_model = PPO1(get_network_arch(env.name), env=env)
+                ppo_model = PPO1(policy, env=env)
                 logger.info(f'Saving base.zip PPO model...')
                 ppo_model.save(os.path.join(config.MODELDIR, env.name, 'base.zip'))
 

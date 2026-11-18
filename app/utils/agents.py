@@ -40,4 +40,12 @@ class Agent():
     return action
 
 
+class RandomAgent(Agent):
+  """Plays a uniformly random legal action: the stand-in for the games that have no
+  policy yet (agent name `random` in test.py / play.py)."""
 
+  def __init__(self, name = 'random'):
+      super().__init__(name)
+
+  def choose_action(self, env, choose_best_action):
+    return int(np.random.choice(np.flatnonzero(get_action_masks(env))))

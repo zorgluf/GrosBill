@@ -3,7 +3,7 @@ import random
 import os
 import shutil
 import config
-from utils.agents import Agent
+from utils.agents import Agent, RandomAgent
 from utils.files import load_model
 from typing import List, Tuple
 from utils.env import GBEnv
@@ -72,18 +72,33 @@ def load_agents(env, agent_names, device):
         elif agent == 'base':
             base_model = load_model(env, 'base.zip', device)
             agent_obj = Agent('base', base_model)   
+        elif agent == 'random':
+            agent_obj = RandomAgent()
         else:
             ppo_model = load_model(env, f'{agent}.zip', device)
             agent_obj = Agent(f"{agent} {i}", ppo_model)
         agents.append(agent_obj)
 
-    if _options()['suggest']:
+    if _suggest(env.name):
         # load best agent for suggestion
         ppo_model = load_model(env, f'{trained_or_base(env.name)}.zip', device)
         agent_obj = Agent(f"Suggest Agent", ppo_model)
         agents.append(agent_obj)
     
     return agents
+
+#: Games that have an env but no network yet: their AI seats play random legal moves
+#: (and there is nothing to suggest) until a best_model.zip shows up in the zoo.
+NO_POLICY = {'toybattle'}
+
+def ai_agent(env_name):
+    """Agent name of the AI seats of `env_name`: `trained_or_base`, or `random` for an untrained game without a policy."""
+    name = trained_or_base(env_name)
+    return 'random' if name == 'base' and env_name in NO_POLICY else name
+
+def _suggest(env_name) -> bool:
+    """The 'Suggest actions' option, off for the games that have no model to ask."""
+    return _options()['suggest'] and ai_agent(env_name) != 'random'
 
 def trained_or_base(env_name, name='best_model'):
     """`name` if a trained model exists for `env_name` (zoo or pretrained), else 'base'."""
@@ -152,11 +167,11 @@ def create_game_page(make_env, env_name, agents_names, agent_load_names):
     if saved is None:
         _save_game(env)
     # play game
-    play_step(env, agents, pov_player=pov_player, suggest=_options()['suggest'])
+    play_step(env, agents, pov_player=pov_player, suggest=_suggest(env.name))
 
 #: Default per-user play options. They are kept as a plain dict: the user storage
 #: is persisted as JSON, so an object would come back as a dict after a restart.
-DEFAULT_OPTIONS = {'suggest': False, 'smallw_players': 3, 'jamaica_players': 4}
+DEFAULT_OPTIONS = {'suggest': False, 'smallw_players': 3, 'jamaica_players': 4, 'toybattle_terrain': 'random'}
 
 def _options() -> dict:
     """The per-user play options, missing keys filled with their default."""
@@ -204,24 +219,41 @@ def jamaica_page():
                      ['human'] + [model] * (n_players - 1))
 
 
+@ui.page('/toybattle')
+def toybattle_page():
+    from environments.toybattle.envs.toybattle import ToyBattleAllTerrainsEnv
+
+    # one network for the 8 terrains; no policy yet, so the AI plays random moves
+    terrain = _options()['toybattle_terrain']
+    create_game_page(lambda n, names: ToyBattleAllTerrainsEnv(names, terrain=None if terrain == 'random' else terrain),
+                     'toybattle', ['human', 'computer'], ['human', ai_agent('toybattle')])
+
+
 GAMES = [
     # (page, env name, title, players, blurb)
     (frouge_page, 'frouge', 'Flamme Rouge', '5 players', 'Cycling race: pick energy cards for your rouleur and sprinter, draft behind the pack, beware of exhaustion.'),
     (stotten_page, 'stotten', 'Schotten Totten', '2 players', 'Claim the stones of the border by laying the best three-card formations on your side.'),
     (smallw_page, 'smallw', 'Small World', '2-5 players', 'Pick a race and power combo, conquer regions, go in decline and pick a fresh race.'),
     (jamaica_page, 'jamaica', 'Jamaica', '3-6 players', 'Pirate race around the island: load food, gold and powder, fight for the treasures.'),
+    (toybattle_page, 'toybattle', 'Toy Battle', '2 players', 'Stack your toy troops from base to base: surround regions for medals or storm the enemy headquarters.'),
 ]
 
 def _smallw_env_name(n_players):
     from environments.smallw.envs.smallw import env_name_for
     return env_name_for(n_players)
 
-#: Cards with a player-count selector: (counts, options key, env name
-#: (zoo directory) of a count). Small World trains one network per count,
-#: Jamaica a single one for every count.
+def _toybattle_terrains():
+    from environments.toybattle.envs.terrains import TERRAINS
+    return {'random': 'Random terrain', **{key: terrain.name for key, terrain in TERRAINS.items()}}
+
+#: Cards with a selector: (choices, options key, env name (zoo directory) of a
+#: choice). The choices are player counts, or a {value: label} dict (the terrain
+#: of Toy Battle). Small World trains one network per count, Jamaica a single one
+#: for every count, Toy Battle a single one for every terrain.
 PLAYER_CHOICES = {
     'smallw': (range(2, 6), 'smallw_players', _smallw_env_name),
     'jamaica': (range(3, 7), 'jamaica_players', lambda n_players: 'jamaica'),
+    'toybattle': (_toybattle_terrains(), 'toybattle_terrain', lambda terrain: 'toybattle'),
 }
 
 def _ai_badge(env_name):
@@ -232,6 +264,7 @@ def _ai_badge(env_name):
                      text_color='green-9' if trained else 'orange-9').classes('px-2 py-1')
     with badge:
         ui.tooltip(f'{env_name}: best_model.zip' if trained
+                   else f'{env_name}: no policy yet, the AI plays random legal moves' if env_name in NO_POLICY
                    else f'{env_name}: no best_model.zip yet, the AIs play the untrained base model')
 
 def _confirm_drop_dialog():
@@ -282,7 +315,7 @@ def _game_card(page, env_name, title, players, blurb, confirm_drop):
             ui.space()
             if choice is not None:
                 counts, key, _ = choice
-                ui.select({n: f'{n} players' for n in counts},
+                ui.select(counts if isinstance(counts, dict) else {n: f'{n} players' for n in counts},
                           on_change=lambda e: show_badges(e.value)).props('dense outlined').bind_value(options, key)
             ui.button('Play', icon='play_arrow', on_click=lambda: ui.navigate.to(page)).props('unelevated')
 

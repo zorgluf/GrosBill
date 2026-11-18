@@ -9,14 +9,16 @@ from stable_baselines3.common.utils import set_random_seed
 
 from utils.files import load_model, write_results
 from utils.register import get_environment
-from utils.agents import Agent
+from utils.agents import Agent, RandomAgent
 
 import config
 import numpy as np
 
 
 def main(args):
-    # Set up logging
+    # Set up logging (explicitly: loading a model used to do it as a side effect,
+    # which the `random` agent does not)
+    logging.basicConfig()
     logger = logging.getLogger("test.py")
     if args.debug:
         logger.setLevel(config.DEBUG)
@@ -49,6 +51,8 @@ def main(args):
         if agent == 'base':
             base_model = load_model(env, 'base.zip', args.device)
             agent_obj = Agent('base', base_model)   
+        elif agent == 'random':
+            agent_obj = RandomAgent()
         else:
             ppo_model = load_model(env, f'{agent}.zip', args.device)
             agent_obj = Agent(agent, ppo_model)
@@ -112,7 +116,7 @@ def cli() -> None:
   parser = argparse.ArgumentParser(formatter_class=formatter_class)
 
   parser.add_argument("--agents","-a", nargs = '+', type=str, default = ['human', 'human']
-                , help="Player Agents (human, ppo version)")
+                , help="Player Agents (base, random = uniform legal moves, or a model name)")
   parser.add_argument("--best", "-b", action = 'store_true', default = False
                 , help="Make AI agents choose the best move (rather than sampling)")
   parser.add_argument("--games", "-g", type = int, default = 1
