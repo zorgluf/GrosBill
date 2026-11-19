@@ -92,16 +92,17 @@ class SelfPlayCallback(MaskableEvalCallback):
     return True
   
   def _record_per_count(self, history, tag) -> bool:
-    """Log the mean reward per player count of the evaluation games (`tag`_<n>p),
-    for the games whose player count varies (jamaica). False if only one count."""
-    counts = sorted({n for n, _ in history})
-    if len(counts) < 2:
+    """Log the mean reward per group of the evaluation games (`tag`_<group>), for the
+    envs that play several variants with one network: `<n>p` per player count
+    (jamaica), the terrain (toybattle) — see `GBEnv.episode_group`. False if only one group."""
+    groups = sorted({g for g, _ in history})
+    if len(groups) < 2:
       return False
-    means = {n: float(np.mean([r for k, r in history if k == n])) for n in counts}
-    for n, mean in means.items():
-      self.logger.record(f"{tag}_{n}p", mean)
-    self.log.info("  {} per player count: {}".format(tag, ", ".join(
-        f"{n}p={mean:.2f} ({sum(k == n for k, _ in history)} games)" for n, mean in means.items())))
+    means = {g: float(np.mean([r for k, r in history if k == g])) for g in groups}
+    for g, mean in means.items():
+      self.logger.record(f"{tag}_{g}", mean)
+    self.log.info("  {} per group: {}".format(tag, ", ".join(
+        f"{g}={mean:.2f} ({sum(k == g for k, _ in history)} games)" for g, mean in means.items())))
     return True
 
   def _on_training_start(self) -> None:

@@ -107,6 +107,12 @@ class GBEnv(gym.Env):
             return []
         return [self.winner_player] + [p for p in range(self.n_players) if p != self.winner_player]
 
+    def episode_group(self) -> str:
+        """What an evaluation groups its games by when the env plays several variants with
+        one network: the player count by default (jamaica), the terrain for toybattle.
+        Logged as `eval/mean_reward[_vs_base]_<group>` when an evaluation saw several."""
+        return f'{self.n_players}p'
+
     def nicegui_page(self):
         raise NotImplementedError("Subclasses must implement nicegui page rendering.")
 

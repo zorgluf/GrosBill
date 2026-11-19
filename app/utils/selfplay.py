@@ -27,8 +27,9 @@ def selfplay_wrapper(env: GBEnv):
                 self.opponent_models = load_all_models(self, device)
             self.best_model_name = get_best_model_name(self.name)
             self.logger = logger
-            # (player count, learner's return) of the last finished games: the eval
-            # callback reports the reward per count of the games that vary it (jamaica)
+            # (group, learner's return) of the last finished games: the eval callback reports
+            # the reward per group — player count (jamaica), terrain (toybattle), see
+            # `GBEnv.episode_group`
             self.episode_history = deque(maxlen=4096)
             self._episode_return = 0.0
 
@@ -145,7 +146,7 @@ def selfplay_wrapper(env: GBEnv):
                     agent_reward += reward
             self._episode_return += agent_reward
             if done:
-                self.episode_history.append((self.n_players, self._episode_return))
+                self.episode_history.append((self.episode_group(), self._episode_return))
             # On `done` we return the genuine terminal observation and let the surrounding
             # VecEnv (SubprocVecEnv / DummyVecEnv) perform the reset and store
             # info["terminal_observation"]. Resetting here caused a double-reset and

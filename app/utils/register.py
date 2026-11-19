@@ -23,6 +23,10 @@ def get_environment(env_name):
             # every game drawn among 3-6 players: one network for every count
             from environments.jamaica.envs.jamaica import JamaicaAllCountsEnv
             return JamaicaAllCountsEnv
+        elif env_name == 'toybattle':
+            # every game drawn among the 8 terrains: one network for all of them
+            from environments.toybattle.envs.toybattle import ToyBattleAllTerrainsEnv
+            return ToyBattleAllTerrainsEnv
         else:
             raise Exception(f'No environment found for {env_name}')
     except SyntaxError as e:
@@ -49,6 +53,10 @@ def get_network_arch(env_name):
         return CustomPolicy
     elif env_name == 'jamaica':
         from models.jamaica.models import CustomPolicy
+        return CustomPolicy
+    elif env_name == 'toybattle':
+        # one network for the 8 terrains
+        from models.toybattle.models import CustomPolicy
         return CustomPolicy
     else:
         raise Exception(f'No model architectures found for {env_name}')
