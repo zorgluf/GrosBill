@@ -113,5 +113,44 @@ def hq_slot(k: int) -> int:
     return MAX_BASES + k
 
 
+# --------------------------------------------------------------------------- #
+# observation layout (built by `ToyBattleEnv.observe`, read by the policy)
+# --------------------------------------------------------------------------- #
+
+N_TERRAINS = 8
+MAX_DIST = 8                #: hop distances are divided by this (the longest one is 7)
+
+# `glob`
+G_TERRAIN = 0                           #: one-hot (8)
+G_PHASE = G_TERRAIN + N_TERRAINS        #: one-hot (7)
+G_SCALARS = G_PHASE + N_PHASES          #: I am Blue, medals mine / theirs / objective, rack mine / theirs, reserve mine / theirs
+N_SCALARS = 8
+G_RACK = G_SCALARS + N_SCALARS          #: my rack by type
+G_PINNED = G_RACK + N_TYPES             #: my troops laid down (Battlefield)
+G_MY_DISCARD = G_PINNED + N_TYPES
+G_OPP_DISCARD = G_MY_DISCARD + N_TYPES
+G_MY_UNSEEN = G_OPP_DISCARD + N_TYPES   #: my tiles still in my reserve or in the box
+G_OPP_UNSEEN = G_MY_UNSEEN + N_TYPES    #: their tiles not seen yet (rack, reserve or box)
+G_CLOCK = G_OPP_UNSEEN + N_TYPES        #: turns played / turn limit
+G_CAN_DRAW = G_CLOCK + 1
+GLOB_F = G_CAN_DRAW + 1                 #: 73
+
+# `bases` columns
+B_EXISTS, B_SPECIAL, B_MINE, B_THEIRS, B_EMPTY = 0, 1, 2, 3, 4
+B_TOP = 5                               #: type of the visible troop, one-hot (8)
+B_HEIGHT, B_MY_TILES, B_THEIR_TILES = 13, 14, 15
+B_UNDER_MINE, B_UNDER_THEIRS, B_UNDER_STRENGTH, B_UNDER_KWAK = 16, 17, 18, 19
+B_MY_REACH, B_THEIR_REACH, B_MY_RANGE, B_THEIR_RANGE = 20, 21, 22, 23
+B_MY_HQ, B_THEIR_HQ = 24, 25            #: one path away from an H.Q.
+B_GATE = 26                             #: strengths allowed, by type (8)
+B_ORIGIN, B_ERUPT_SRC = 34, 35          #: where the pending effect comes from / the troop being moved
+B_MY_GAIN, B_THEIR_GAIN = 36, 37        #: medals (share of the objective) won by occupying the base now
+B_QUEUED = 38                           #: its special effect is still to apply this turn
+B_MY_DIST, B_THEIR_DIST = 39, 40        #: paths to the nearest H.Q. of each side / MAX_DIST
+BASE_F = 41
+
+REGION_F = MAX_BASES + 7                #: bases around it, exists, medals left, taken mine / theirs, my / their share, size
+HQ_F = 2 + N_TYPES + MAX_BASES          #: exists, can be captured now, strengths allowed, adjacent bases
+
 MAX_TURNS = 300             #: safeguard (not a rule): the game is cut after that many turns
 SHAPING = 0.5               #: weight of the medal potential in the reward

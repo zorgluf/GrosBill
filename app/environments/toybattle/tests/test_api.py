@@ -7,9 +7,9 @@ import numpy as np
 
 from utils.register import get_environment
 
-from ..envs.constants import A_DRAW, N_ACTIONS, Phase
+from ..envs.constants import A_DRAW, BASE_F, GLOB_F, N_ACTIONS, Phase
 from ..envs.terrains import TERRAIN_KEYS, TERRAINS
-from ..envs.toybattle import BASE_F, GLOB_F, ToyBattleAllTerrainsEnv, ToyBattleEnv
+from ..envs.toybattle import ToyBattleAllTerrainsEnv, ToyBattleEnv
 from .helpers import make_env, random_play
 
 
@@ -87,6 +87,7 @@ def test_registered_env_draws_every_terrain():
         assert obs['glob'][:8].sum() == 1 and obs['glob'][env.terrain.index] == 1
     assert seen == set(TERRAIN_KEYS)
     assert cls(terrain='clouds').terrain_pool == ('clouds',)
+    assert env.episode_group() == env.terrain_key       # what the eval callback groups the games by
     assert cls(['Ann', 'Bob']).player_names == ['Ann', 'Bob']
 
 

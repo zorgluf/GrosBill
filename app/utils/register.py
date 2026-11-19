@@ -55,6 +55,8 @@ def get_network_arch(env_name):
         from models.jamaica.models import CustomPolicy
         return CustomPolicy
     elif env_name == 'toybattle':
-        raise Exception('toybattle has no policy yet (env only): play it with the `random` agent')
+        # one network for the 8 terrains
+        from models.toybattle.models import CustomPolicy
+        return CustomPolicy
     else:
         raise Exception(f'No model architectures found for {env_name}')

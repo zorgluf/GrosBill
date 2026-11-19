@@ -5,8 +5,8 @@ import random
 
 import numpy as np
 
-from ..envs.constants import (A_SKIP, BLUE, N_PHASES, N_TYPES, Phase, RACK_MAX, RED)
-from ..envs.terrains import N_TERRAINS, TERRAIN_KEYS
+from ..envs.constants import (A_SKIP, BLUE, G_SCALARS, N_TYPES, Phase, RACK_MAX, RED)
+from ..envs.terrains import TERRAIN_KEYS
 from ..envs.toybattle import ToyBattleAllTerrainsEnv
 from .helpers import make_env, random_play, tiles
 
@@ -81,7 +81,7 @@ def _mirrored(env):
 def test_both_colours_see_the_same_game():
     """On a symmetric terrain the observation and the mask are the same for
     Blue and for Red in the mirrored position (but for the colour bit)."""
-    colour_bit = N_TERRAINS + N_PHASES
+    colour_bit = G_SCALARS
     compared = 0
     for g, key in enumerate(TERRAIN_KEYS * 2):
         env = make_env(key, seed=300 + g)

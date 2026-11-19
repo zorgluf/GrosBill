@@ -9,7 +9,7 @@ from stable_baselines3.common.utils import set_random_seed
 
 from utils.files import load_model, write_results
 from utils.register import get_environment
-from utils.agents import Agent, RandomAgent
+from utils.agents import Agent, GreedyAgent, RandomAgent
 
 import config
 import numpy as np
@@ -53,6 +53,8 @@ def main(args):
             agent_obj = Agent('base', base_model)   
         elif agent == 'random':
             agent_obj = RandomAgent()
+        elif agent == 'greedy':
+            agent_obj = GreedyAgent()
         else:
             ppo_model = load_model(env, f'{agent}.zip', args.device)
             agent_obj = Agent(agent, ppo_model)
@@ -116,7 +118,7 @@ def cli() -> None:
   parser = argparse.ArgumentParser(formatter_class=formatter_class)
 
   parser.add_argument("--agents","-a", nargs = '+', type=str, default = ['human', 'human']
-                , help="Player Agents (base, random = uniform legal moves, or a model name)")
+                , help="Player Agents (base, random = uniform legal moves, greedy = one-ply on the reward, or a model name)")
   parser.add_argument("--best", "-b", action = 'store_true', default = False
                 , help="Make AI agents choose the best move (rather than sampling)")
   parser.add_argument("--games", "-g", type = int, default = 1

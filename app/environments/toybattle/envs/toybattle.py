@@ -19,17 +19,17 @@ import numpy as np
 
 from utils.env import GBEnv
 
-from .constants import (A_DRAW, A_PLACE, A_SKIP, A_TARGET, A_TYPE, COLOR_NAMES, COPIES, Effect,
-                        FIRST_HAND, MAX_BASES, MAX_HQ, MAX_REGIONS, MAX_TURNS, N_ACTIONS,
-                        N_PHASES, N_SLOTS, N_TYPES, Phase, RACK_MAX, REMOVED, SHAPING, TRIGGERED,
-                        TROOP_NAMES, Troop, place_action)
-from .terrains import N_TERRAINS, TERRAIN_KEYS, TERRAINS, Terrain
-
-# observation sizes
-BASE_F = 36
-REGION_F = MAX_BASES + 7
-HQ_F = 2 + N_TYPES + MAX_BASES
-GLOB_F = N_TERRAINS + N_PHASES + 1 + 3 + 4 + N_TYPES + N_TYPES + 1 + 4 * N_TYPES + 2
+from .constants import (A_DRAW, A_PLACE, A_SKIP, A_TARGET, A_TYPE, B_ERUPT_SRC, B_GATE, B_HEIGHT,
+                        B_MY_DIST, B_MY_GAIN, B_MY_HQ, B_MY_RANGE, B_MY_REACH, B_MY_TILES, B_ORIGIN,
+                        B_QUEUED, B_THEIR_DIST, B_THEIR_GAIN, B_THEIR_HQ, B_THEIR_RANGE,
+                        B_THEIR_REACH, B_THEIR_TILES, B_TOP, B_UNDER_KWAK, B_UNDER_MINE,
+                        B_UNDER_STRENGTH, B_UNDER_THEIRS, BASE_F, COLOR_NAMES, COPIES, Effect,
+                        FIRST_HAND, G_CAN_DRAW, G_CLOCK, G_MY_DISCARD, G_MY_UNSEEN, G_OPP_DISCARD,
+                        G_OPP_UNSEEN, G_PHASE, G_PINNED, G_RACK, G_SCALARS, GLOB_F, HQ_F, MAX_BASES,
+                        MAX_DIST, MAX_HQ, MAX_REGIONS, MAX_TURNS, N_ACTIONS, N_SLOTS, N_TYPES, Phase,
+                        RACK_MAX, REGION_F, REMOVED, SHAPING, TRIGGERED, TROOP_NAMES, Troop,
+                        place_action)
+from .terrains import TERRAIN_KEYS, TERRAINS, Terrain
 
 
 class ToyBattleEnv(GBEnv):
@@ -118,6 +118,10 @@ class ToyBattleEnv(GBEnv):
     def _info():
         return {'next_step_no_action': False}
 
+    def episode_group(self) -> str:
+        """Evaluations report the reward per terrain (`eval/mean_reward_<terrain>`)."""
+        return self.terrain_key
+
     # ------------------------------------------------------------------ #
     # board queries
     # ------------------------------------------------------------------ #
@@ -195,6 +199,18 @@ class ToyBattleEnv(GBEnv):
     def recall_targets(self, p: int, origin: int) -> list[int]:
         return [b for b in range(len(self.stacks)) if b != origin and self.owner(b) == p]
 
+    def region_gains(self, p: int) -> list[int]:
+        """Per base, the medals `p` would take by occupying it now: those of the
+        regions still holding theirs that `p` surrounds but for that base."""
+        gains = [0] * len(self.stacks)
+        for region, taker in zip(self.terrain.regions, self.region_owner):
+            if taker >= 0:
+                continue
+            missing = [b for b in region.bases if self.owner(b) != p]
+            if len(missing) == 1:
+                gains[missing[0]] += region.medals
+        return gains
+
     def can_draw(self, p: int) -> bool:
         return self.rack_size(p) < RACK_MAX and bool(self.reserve[p])
 
@@ -264,6 +280,12 @@ class ToyBattleEnv(GBEnv):
         return f'take {TROOP_NAMES[action - A_TYPE]} back from the discard'
 
     def step(self, action):
+        reward = self.apply(action)
+        return self.observation, reward, self.done, False, self._info()
+
+    def apply(self, action) -> list[float]:
+        """Play `action` and return the rewards: `step()` without building the
+        observation (searches and scripted players step copies of the env a lot)."""
         if self.done:
             raise Exception('the game is over: reset() first')
         action = int(action)
@@ -296,7 +318,7 @@ class ToyBattleEnv(GBEnv):
         if self.done and self.winner_player is not None:
             gain += 1.0 if self.winner_player == p else -1.0
         reward[p], reward[1 - p] = gain, -gain
-        return self.observation, reward, self.done, False, self._info()
+        return reward
 
     def _potential(self, p: int) -> float:
         return self.shaping * (self.medals[p] - self.medals[1 - p]) / self.terrain.objective
@@ -519,6 +541,7 @@ class ToyBattleEnv(GBEnv):
         my_hq = {b for hq in T.hqs[me] for b in hq.bases}
         opp_hq = {b for hq in T.hqs[opp] for b in hq.bases}
 
+        gains = (self.region_gains(me), self.region_gains(opp))
         bases = np.zeros((MAX_BASES, BASE_F), dtype=np.float32)
         adj = np.zeros((MAX_BASES, MAX_BASES), dtype=np.float32)
         for slot, b in enumerate(view):
@@ -529,27 +552,32 @@ class ToyBattleEnv(GBEnv):
             if stack:
                 owner, top = stack[-1]
                 row[2 if owner == me else 3] = 1
-                row[5 + top] = 1
-                row[13] = min(len(stack), 4) / 4
-                row[14] = min(sum(o == me for o, _ in stack), 3) / 3
-                row[15] = min(sum(o == opp for o, _ in stack), 3) / 3
+                row[B_TOP + top] = 1
+                row[B_HEIGHT] = min(len(stack), 4) / 4
+                row[B_MY_TILES] = min(sum(o == me for o, _ in stack), 3) / 3
+                row[B_THEIR_TILES] = min(sum(o == opp for o, _ in stack), 3) / 3
                 if len(stack) > 1:
                     owner, under = stack[-2]
-                    row[16 if owner == me else 17] = 1
-                    row[18] = under / 7
-                    row[19] = under == Troop.KWAK
+                    row[B_UNDER_MINE if owner == me else B_UNDER_THEIRS] = 1
+                    row[B_UNDER_STRENGTH] = under / 7
+                    row[B_UNDER_KWAK] = under == Troop.KWAK
             else:
                 row[4] = 1
-            row[20] = b in reach[0]
-            row[21] = b in reach[1]
-            row[22] = b in front[0]
-            row[23] = b in front[1]
-            row[24] = b in my_hq
-            row[25] = b in opp_hq
+            row[B_MY_REACH] = b in reach[0]
+            row[B_THEIR_REACH] = b in reach[1]
+            row[B_MY_RANGE] = b in front[0]
+            row[B_THEIR_RANGE] = b in front[1]
+            row[B_MY_HQ] = b in my_hq
+            row[B_THEIR_HQ] = b in opp_hq
             for t in range(N_TYPES):
-                row[26 + t] = self._gate_ok(base.gate, t)
-            row[34] = b == self.pending_base
-            row[35] = b == self.erupt_src
+                row[B_GATE + t] = self._gate_ok(base.gate, t)
+            row[B_ORIGIN] = b == self.pending_base
+            row[B_ERUPT_SRC] = b == self.erupt_src
+            row[B_MY_GAIN] = min(gains[0][b] / T.objective, 1)
+            row[B_THEIR_GAIN] = min(gains[1][b] / T.objective, 1)
+            row[B_QUEUED] = b in self.base_queue
+            row[B_MY_DIST] = T.hq_dist[me][b] / MAX_DIST
+            row[B_THEIR_DIST] = T.hq_dist[opp][b] / MAX_DIST
             for n in T.adj[b]:
                 adj[slot, T.slots[me][n]] = 1
 
@@ -580,31 +608,28 @@ class ToyBattleEnv(GBEnv):
 
         g = np.zeros(GLOB_F, dtype=np.float32)
         g[T.index] = 1
-        i = N_TERRAINS
-        g[i + self.phase] = 1
-        i += N_PHASES
-        g[i] = me == 0                                                  # I play Blue
-        g[i + 1] = min(self.medals[me] / T.objective, 1)
-        g[i + 2] = min(self.medals[opp] / T.objective, 1)
-        g[i + 3] = T.objective / 8
-        g[i + 4] = self.rack_size(me) / RACK_MAX
-        g[i + 5] = self.rack_size(opp) / RACK_MAX
-        g[i + 6] = len(self.reserve[me]) / (N_TYPES * COPIES - REMOVED)
-        g[i + 7] = len(self.reserve[opp]) / (N_TYPES * COPIES - REMOVED)
-        i += 8
+        g[G_PHASE + self.phase] = 1
+        g[G_SCALARS:G_SCALARS + 8] = (
+            me == 0,                                                    # I play Blue
+            min(self.medals[me] / T.objective, 1),
+            min(self.medals[opp] / T.objective, 1),
+            T.objective / 8,
+            self.rack_size(me) / RACK_MAX,
+            self.rack_size(opp) / RACK_MAX,
+            len(self.reserve[me]) / (N_TYPES * COPIES - REMOVED),
+            len(self.reserve[opp]) / (N_TYPES * COPIES - REMOVED),
+        )
         mine, theirs = self.on_board(me), self.on_board(opp)
         for t in range(N_TYPES):
-            g[i + t] = self.racks[me][t] / COPIES
-            g[i + N_TYPES + t] = self.blocked[me][t] / COPIES
-            g[i + 2 * N_TYPES + 1 + t] = self.discard[me][t] / COPIES
-            g[i + 3 * N_TYPES + 1 + t] = self.discard[opp][t] / COPIES
+            g[G_RACK + t] = self.racks[me][t] / COPIES
+            g[G_PINNED + t] = self.blocked[me][t] / COPIES
+            g[G_MY_DISCARD + t] = self.discard[me][t] / COPIES
+            g[G_OPP_DISCARD + t] = self.discard[opp][t] / COPIES
             # my tiles still in my reserve or in the box / theirs not seen yet
-            g[i + 4 * N_TYPES + 1 + t] = (COPIES - self.racks[me][t] - mine[t] - self.discard[me][t]) / COPIES
-            g[i + 5 * N_TYPES + 1 + t] = (COPIES - theirs[t] - self.discard[opp][t]) / COPIES
-        g[i + 2 * N_TYPES] = sum(self.blocked[opp]) / RACK_MAX
-        i += 6 * N_TYPES + 1
-        g[i] = min(self.turns_taken / self.max_turns, 1)
-        g[i + 1] = self.can_draw(me)
+            g[G_MY_UNSEEN + t] = (COPIES - self.racks[me][t] - mine[t] - self.discard[me][t]) / COPIES
+            g[G_OPP_UNSEEN + t] = (COPIES - theirs[t] - self.discard[opp][t]) / COPIES
+        g[G_CLOCK] = min(self.turns_taken / self.max_turns, 1)
+        g[G_CAN_DRAW] = self.can_draw(me)
 
         mask = self.action_masks().astype(np.float32) if pov == self.current_player \
             else np.zeros(N_ACTIONS, dtype=np.float32)

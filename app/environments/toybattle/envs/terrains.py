@@ -21,7 +21,7 @@ import math
 from dataclasses import dataclass
 from functools import lru_cache
 
-from .constants import (BLUE, RED, Effect, MAX_BASES, MAX_HQ, MAX_REGIONS)
+from .constants import (BLUE, RED, Effect, MAX_BASES, MAX_DIST, MAX_HQ, MAX_REGIONS, N_TERRAINS)
 
 W, H = 100.0, 166.0
 
@@ -71,6 +71,8 @@ class Terrain:
     views: tuple[tuple[int, ...], tuple[int, ...]]
     slots: tuple[tuple[int, ...], tuple[int, ...]]          #: inverse of views
     region_views: tuple[tuple[int, ...], tuple[int, ...]]   #: same, for the regions
+    #: hq_dist[colour][base] = paths from the base to the nearest H.Q. of that colour
+    hq_dist: tuple[tuple[int, ...], tuple[int, ...]]
 
     @property
     def n_bases(self) -> int:
@@ -484,6 +486,19 @@ def _build(index: int, raw: dict) -> Terrain:
                 f'{key}: H.Q. {blue.name} / {red.name} differ'
         red_view = tuple(turn)
 
+    hq_dist = []
+    for side in hqs:
+        dist = {b: 1 for hq in side for b in hq.bases}
+        todo = list(dist)
+        while todo:
+            b = todo.pop(0)
+            for nb in adj[b]:
+                if nb not in dist:
+                    dist[nb] = dist[b] + 1
+                    todo.append(nb)
+        hq_dist.append(tuple(dist[b] for b in range(n)))
+        assert max(hq_dist[-1]) < MAX_DIST, key
+
     assert n <= MAX_BASES and len(regions) <= MAX_REGIONS, key
     assert all(1 <= len(side) <= MAX_HQ for side in hqs), key
     views = (identity, red_view)
@@ -493,7 +508,8 @@ def _build(index: int, raw: dict) -> Terrain:
                    hqs=(tuple(hqs[BLUE]), tuple(hqs[RED])),
                    adj=tuple(tuple(sorted(a)) for a in adj), edges=edges,
                    regions=tuple(regions), symmetric=raw['symmetric'],
-                   views=views, slots=slots, region_views=(region_identity, red_regions))
+                   views=views, slots=slots, region_views=(region_identity, red_regions),
+                   hq_dist=tuple(hq_dist))
 
 
 def build() -> dict[str, Terrain]:
@@ -502,4 +518,4 @@ def build() -> dict[str, Terrain]:
 
 TERRAINS: dict[str, Terrain] = build()
 TERRAIN_KEYS: tuple[str, ...] = tuple(TERRAINS)
-N_TERRAINS = len(TERRAINS)
+assert len(TERRAINS) == N_TERRAINS

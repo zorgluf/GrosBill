@@ -165,6 +165,11 @@ As reference, the following parameters are used for initial training of the best
    python3 train.py -r -e jamaica -t 0.2 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
    ```
 
+* For Toy Battle:
+   ```sh
+   python3 train.py -r -e toybattle -dev cuda -n_envs 4 -os 1024 -ob 1024 -oe 5 -g 0.995 -ent 0.01 -lr 2e-4 -t 0.2 -ne 200
+   ```
+
 Training can be fine-tuned by lowering entropy until 0 and decreasing lr from default 3e-4 into 1e-4.
 
 #### `test.py`

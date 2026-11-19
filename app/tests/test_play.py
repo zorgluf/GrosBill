@@ -11,14 +11,15 @@ async def test_pages(user, route):
     await user.should_see('GrosBill' if route == '/' else 'hand')
 
 async def test_toybattle_page(user):
-    # no policy yet: the AI seat plays random legal moves, on the chosen terrain
+    # the AI seat plays the trained model if there is one, else the untrained base one
     await user.open('/')
     app.storage.user['options']['toybattle_terrain'] = 'pool'
     await user.open('/toybattle')
     await user.should_see('Tropical Pool')
     await user.should_see('reserve')
     saved = app.storage.user.get('saved_games', {}).get('toybattle')
-    assert saved is not None and saved['agent_load_names'] in (['human', 'random'], ['random', 'human'])
+    assert saved is not None and sorted(saved['agent_load_names'])[-1] == 'human'
+    assert set(saved['agent_load_names']) - {'human'} <= {'base', 'best_model'}
     # the saved game is resumed, whatever terrain is selected meanwhile
     app.storage.user['options']['toybattle_terrain'] = 'castle'
     await user.open('/toybattle')

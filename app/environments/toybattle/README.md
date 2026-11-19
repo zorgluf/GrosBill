@@ -1,8 +1,7 @@
 # Toy Battle (`toybattle`)
 
-The two-player duel of toy troops (Paolo Mori & Alessandro Zucchini — Repos Production, 2025).
-Env, web UI and tests only: **there is no policy yet** (`get_network_arch('toybattle')` raises),
-so the game is played with the `random` agent for now.
+The two-player duel of toy troops (Paolo Mori & Alessandro Zucchini — Repos Production, 2025):
+env, web UI, tests, and a policy (`app/models/toybattle/README.md`) that is not trained yet.
 
 `ToyBattleEnv` plays one terrain (Castle Field by default, `terrain='pool'`…), or draws the terrain
 of every game among `terrains=(...)` at `reset()` (or takes `options={'terrain': key}`).
@@ -20,8 +19,9 @@ tests/              python3 -m environments.toybattle.tests.run_all   (from app/
 ```
 
 ```sh
-python3 -m environments.toybattle.tests.run_all            # 95 tests, ~10 s
+python3 -m environments.toybattle.tests.run_all            # 107 tests, ~15 s
 python3 test.py -g 200 -a random random -e toybattle       # random legal moves on random terrains
+python3 test.py -g 200 -r -a greedy random -e toybattle    # the one-ply greedy reference (wins ~87%)
 python3 play.py                                            # then /toybattle (pick the terrain on the card)
 ```
 
@@ -123,19 +123,25 @@ same indices there, and `glob` tells which colour is playing.
 
 | key       | shape     | content |
 |-----------|-----------|---------|
-| `glob`    | 74        | terrain (8), phase (7), I am Blue, medals mine/theirs/objective, rack and reserve sizes, my rack (8), my pinned troops (8), their pinned count, my discard (8), their discard (8), my unseen tiles (8), their unseen tiles (8), turn clock, can draw |
-| `bases`   | 15 x 36   | exists, special, top troop mine/theirs/none, its type (8), stack height, my/their tiles in the stack, the tile under the top (owner, strength, Kwak), connected to my/their H.Q., in my/their placement range, next to my/their H.Q., strengths allowed (8), origin of the pending effect, troop being moved |
+| `glob`    | 73        | terrain (8), phase (7), I am Blue, medals mine/theirs/objective, rack and reserve sizes, my rack (8), my pinned troops (8), my discard (8), their discard (8), my unseen tiles (8), their unseen tiles (8), turn clock, can draw |
+| `bases`   | 15 x 41   | exists, special, top troop mine/theirs/none, its type (8), stack height, my/their tiles in the stack, the tile under the top (owner, strength, Kwak), connected to my/their H.Q., in my/their placement range, next to my/their H.Q., strengths allowed (8), origin of the pending effect, troop being moved, **medals I / they win by occupying it now**, **special effect still queued this turn**, **paths to my / their nearest H.Q.** |
 | `adj`     | 15 x 15   | paths between base slots |
 | `regions` | 14 x 22   | bases around it (15), exists, medals left, taken by me/them, share of its bases I/they hold, size |
 | `hqs`     | 4 x 25    | my H.Q. then theirs: exists, can be captured now, strengths allowed (8), adjacent bases (15) |
 | `mask`    | 161       | the legal actions |
+
+The column and slice names are in `constants.py` (`B_*`, `G_*`), which the policy reads. The three
+groups in bold are engine-computed helpers: a region one base short of being surrounded shows up on
+that base (as a gain for me, a threat from them), so the network does not have to rediscover the
+region arithmetic from sparse rewards.
 
 Hidden: the other rack (only its size), which of their troops is pinned, both reserves' order and
 the tiles in the box. `redeterminize(pov)` re-deals all of it without changing `observe(pov)`.
 
 **Reward.** Zero-sum, per seat: +1 / -1 at the end (0 / 0 for a turn-limit draw), plus a potential
 on the medal difference, `shaping * (mine - theirs) / objective` (0.5 by default), which is 0 at
-both ends — so a game's return is exactly the outcome.
+both ends — so a game's return is exactly the outcome. `env.apply(action)` is `step()` without the
+observation (it returns the rewards only), for searches and scripted players that step copies.
 
 ## Web UI
 
