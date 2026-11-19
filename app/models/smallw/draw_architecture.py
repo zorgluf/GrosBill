@@ -52,8 +52,9 @@ def fmt(n: int) -> str:
 
 
 class Svg:
-    def __init__(self):
+    def __init__(self, w: int = W, h: int = H, title: str = 'smallw policy network', bias: str = C_REG):
         self.parts: list[str] = []
+        self.w, self.h, self.title, self.bias = w, h, title, bias      # also used by models/toybattle
 
     def add(self, s: str):
         self.parts.append(s)
@@ -96,8 +97,8 @@ class Svg:
         self.text(cx, cy + 5, '+', 'bt', 'middle', size=16)
 
     def render(self) -> str:
-        head = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
-<title>smallw policy network</title>
+        head = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.w} {self.h}" width="{self.w}" height="{self.h}" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>{escape(self.title)}</title>
 <style>
   .box {{ stroke-width:1.2; }}
   .t  {{ font-size:12px; }}
@@ -108,7 +109,7 @@ class Svg:
   .cap {{ font-size:11px; letter-spacing:0.08em; font-weight:600; }}
   .ln {{ stroke-width:1.4; }}
   .dash {{ stroke-width:1.2; stroke-dasharray:4 3; }}
-  .bias {{ stroke:{C_REG}; stroke-width:1.4; stroke-dasharray:5 3; }}
+  .bias {{ stroke:{self.bias}; stroke-width:1.4; stroke-dasharray:5 3; }}
   .grid {{ stroke:none; }}
   .hl {{ stroke-width:1.4; }}
 {colour_rules(LIGHT)}
@@ -121,7 +122,7 @@ class Svg:
     <path d="M0,0 L10,5 L0,10 z" class="ah"/>
   </marker>
 </defs>
-<rect width="{W}" height="{H}" class="bg"/>
+<rect width="{self.w}" height="{self.h}" class="bg"/>
 '''
         return head + '\n'.join(self.parts) + '\n</svg>\n'
 

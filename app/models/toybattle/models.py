@@ -119,6 +119,24 @@ def hop_distances(adj: th.Tensor) -> th.Tensor:
     return dist
 
 
+def relation_ids(obs) -> th.Tensor:
+    """(B, L, L) relation of every token (row) to every token (column), read from the observation."""
+    adj, regions, hqs = obs['adj'].float(), obs['regions'].float(), obs['hqs'].float()
+    b = adj.shape[0]
+    rel = th.zeros(b, N_TOKENS, N_TOKENS, dtype=th.long, device=adj.device)
+    bs, rs, hs = slice(T_BASES, T_REGIONS), slice(T_REGIONS, T_HQS), slice(T_HQS, N_TOKENS)
+    rel[:, bs, bs] = R_DIST + hop_distances(adj).long()
+    member = regions[:, :, :MAX_BASES] > 0.5                                 # (B, region, base)
+    rel[:, bs, rs] = member.transpose(1, 2).long() * R_IN_REGION
+    rel[:, rs, bs] = member.long() * R_REGION_OF
+    near = hqs[:, :, 2 + N_TYPES:] > 0.5                                     # (B, hq, base)
+    to_hq = th.tensor([R_NEAR_MY_HQ] * MAX_HQ + [R_NEAR_THEIR_HQ] * MAX_HQ, device=adj.device)
+    from_hq = th.tensor([R_MY_HQ_NEAR] * MAX_HQ + [R_THEIR_HQ_NEAR] * MAX_HQ, device=adj.device)
+    rel[:, bs, hs] = near.transpose(1, 2).long() * to_hq.view(1, 1, -1)
+    rel[:, hs, bs] = near.long() * from_hq.view(1, -1, 1)
+    return rel
+
+
 class Trunk(th.nn.Module):
     """Observation dict (batched tensors) -> ((B, L, d) output tokens, (B, L) presence)."""
 
@@ -174,20 +192,7 @@ class Trunk(th.nn.Module):
 
     def _bias(self, obs, present: th.Tensor) -> th.Tensor:
         """(B, H, L, L) attention bias from the relations between the tokens."""
-        adj, regions, hqs = obs['adj'].float(), obs['regions'].float(), obs['hqs'].float()
-        b = adj.shape[0]
-        rel = th.zeros(b, N_TOKENS, N_TOKENS, dtype=th.long, device=adj.device)
-        bs, rs, hs = slice(T_BASES, T_REGIONS), slice(T_REGIONS, T_HQS), slice(T_HQS, N_TOKENS)
-        rel[:, bs, bs] = R_DIST + hop_distances(adj).long()
-        member = regions[:, :, :MAX_BASES] > 0.5                             # (B, region, base)
-        rel[:, bs, rs] = member.transpose(1, 2).long() * R_IN_REGION
-        rel[:, rs, bs] = member.long() * R_REGION_OF
-        near = hqs[:, :, 2 + N_TYPES:] > 0.5                                 # (B, hq, base)
-        to_hq = th.tensor([R_NEAR_MY_HQ] * MAX_HQ + [R_NEAR_THEIR_HQ] * MAX_HQ, device=adj.device)
-        from_hq = th.tensor([R_MY_HQ_NEAR] * MAX_HQ + [R_THEIR_HQ_NEAR] * MAX_HQ, device=adj.device)
-        rel[:, bs, hs] = near.transpose(1, 2).long() * to_hq.view(1, 1, -1)
-        rel[:, hs, bs] = near.long() * from_hq.view(1, -1, 1)
-        bias = self.relation(rel).permute(0, 3, 1, 2)                        # (B, H, L, L)
+        bias = self.relation(relation_ids(obs)).permute(0, 3, 1, 2)          # (B, H, L, L)
         return bias.masked_fill((present < 0.5)[:, None, None, :], -1e9)
 
     def forward(self, obs) -> tuple[th.Tensor, th.Tensor]:

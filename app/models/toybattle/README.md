@@ -4,6 +4,13 @@ One network for the 8 terrains: a graph transformer that reads the board from th
 instead of memorising slots, with pointer heads onto the actions. About 762k parameters; one
 decision takes a couple of milliseconds on a CPU.
 
+![toybattle policy architecture](architecture.svg)
+
+`architecture.svg` and its one-page `architecture.pdf` are generated from the live network (sizes,
+parameter counts) and from a live observation of one terrain (the board thumbnail and the relation
+matrix of the attention-bias panel): `python3 -m models.toybattle.draw_architecture --pdf` from
+`app/` (`--pdf` needs Chrome or Chromium; without it only the SVG is written).
+
 ## Why this shape
 
 Measured on 1,600 random games before choosing (learner's point of view):
