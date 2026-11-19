@@ -49,11 +49,12 @@
 
 GrosBill lets you **play board games against AI agents in your browser**, and **train those agents yourself** through self-play reinforcement learning.
 
-Four games are currently implemented:
+Five games are currently implemented:
 * **Flamme Rouge** (`frouge`) — the cycling race game, played as 1 human against 4 AI riders
 * **Schotten Totten** (`stotten`) — the 2-player card game, played head-to-head against the AI
-* **Small World** (`smallw`) — the conquest game (base game, 14 races and 20 special powers), 2 to 5 players on the board of each player count, played as 1 human against the AIs; no agent has been trained for it yet, so its opponents currently play random legal moves
-* **Jamaica** (`jamaica`) — the pirate race around the island (3 to 6 players: one network trained on every count, 1 human against 2 to 5 AIs); no agent has been trained for it yet either
+* **Small World** (`smallw`) — the conquest game (base game, 14 races and 20 special powers), 2 to 5 players on the board of each player count, played as 1 human against the AIs; trained agents are shipped for 2 and 3 players, the 4- and 5-player opponents still play the untrained policy
+* **Jamaica** (`jamaica`) — the pirate race around the island (3 to 6 players: one network trained on every count, 1 human against 2 to 5 AIs)
+* **Toy Battle** (`toybattle`) — the 2-player duel of toy troops, head-to-head against the AI on any of the 8 terrains (one network for all of them)
 
 This project initially started as a fork of the great project [SIMPLE](https://github.com/davidADSP/SIMPLE) made by David Foster [@davidADSP](https://twitter.com/davidADSP) - david@adsp.ai.
 To learn more about this initial project, check out the accompanying [blog post](https://medium.com/applied-data-science/how-to-train-ai-agents-to-play-multiplayer-games-using-self-play-deep-reinforcement-learning-247d0b440717).
@@ -83,7 +84,7 @@ Either:
 * **Docker** (and Docker Compose to make use of the `docker-compose.yml` file) — the easiest way to just play, or
 * **Python 3.12** with `pip` if you prefer to run natively (a virtual environment is recommended)
 
-Pre-trained models for Flamme Rouge and Schotten Totten are shipped in the repo (`app/zoo/pretrained/`), so you can play right away without training anything. Small World and Jamaica have no trained model yet — see [Small World](#small-world) and [Jamaica](#jamaica) below.
+Pre-trained models for Flamme Rouge, Schotten Totten, Jamaica, Toy Battle and Small World (2 and 3 players) are shipped in the repo (`app/zoo/pretrained/`), so you can play right away without training anything. Small World with 4 or 5 players has no trained model yet — see [Small World](#small-world) below.
 
 ### Installation
 
@@ -127,14 +128,18 @@ This entrypoint launches a web server on port 8080 as a GUI interface to play ag
    python3 play.py
    ```
 
-Open http://localhost:8080 and pick a game from the home page. Each game loads the current `best_model.zip` from `app/zoo/<env>/` as opponent (falling back on the pre-trained ones). From the home page you can also toggle:
+Open http://localhost:8080 and pick a game from the home page. Each game loads the current `best_model.zip` from `app/zoo/<env>/` as opponent (falling back on the pre-trained ones, then on the untrained `base` policy); a badge on each game card tells whether its AI is trained. From the home page you can also toggle:
 * **Suggest action** — the AI shows you the move it would play in your position, useful to learn a game or evaluate the agent.
+
+Some cards have a selector: the player count for Small World and Jamaica, the terrain for Toy Battle (or a random one).
+
+A game in progress is saved after every move (server side, keyed by your browser session), so it survives a page reload, a disconnection or a browser restart: the card shows a **Game in progress** badge and **Play** resumes it. Click the cross on the badge to abandon the game and start a new one. When a game ends, the final ranking of all the players is displayed.
 
 #### `train.py`
 
 This entrypoint allows you to start training the AI using self-play PPO (the maskable-action variant `MaskablePPO` from [sb3-contrib](https://sb3-contrib.readthedocs.io/)).
 
-You must select the environment to train with `-e` (`frouge`, `stotten`, `stottentr` — a transformer-policy variant of Schotten Totten kept in its own zoo/logs namespace —, `smallw2` / `smallw` / `smallw4` / `smallw5` — Small World with 2 / 3 / 4 / 5 players, one model each — or `jamaica`). For a detailed explanation of the training parameters, please read the help carefully:
+You must select the environment to train with `-e` (`frouge`, `stotten`, `stottentr` — a transformer-policy variant of Schotten Totten kept in its own zoo/logs namespace —, `smallw2` / `smallw` / `smallw4` / `smallw5` — Small World with 2 / 3 / 4 / 5 players, one model each —, `jamaica` or `toybattle`). For a detailed explanation of the training parameters, please read the help carefully:
    ```sh
    python3 train.py --help
    ```
@@ -164,7 +169,6 @@ As reference, the following parameters are used for initial training of the best
    ```sh
    python3 train.py -r -e jamaica -t 0.2 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
    ```
-
 * For Toy Battle:
    ```sh
    python3 train.py -r -e toybattle -dev cuda -n_envs 4 -os 1024 -ob 1024 -oe 5 -g 0.995 -ent 0.01 -lr 2e-4 -t 0.2 -ne 200
@@ -187,9 +191,15 @@ Played 100 games: {'best_model_btkce': 31.0, 'base_sajsi': -15.5, 'base_poqaj': 
 
 You can also pass `human` as one of the agents to play in the terminal (not supported by current game implementation, still work in progress), or any archived model name from `app/zoo/<env>/` to pit specific model generations against each other.
 
+Two scripted agents need no model: `random` plays uniformly among the legal moves, and `greedy` plays the move with the best immediate reward (one-ply lookahead on a copy of the env — it sees the outcome of random effects, so it is a yardstick rather than a fair player):
+
+  ```sh
+  python3 test.py -g 200 -a greedy random -e toybattle
+  ```
+
 #### Small World
 
-Small World is played by 2 to 5 players, each player count on its own board (23 / 30 / 39 / 48 regions, 10 / 10 / 9 / 8 turns): you play one seat, the AIs play the others. Every player count is its own environment, with its own action / observation sizes, its own network and its own `zoo/<env>/`: `smallw2`, `smallw` (3 players), `smallw4` and `smallw5`. **No agent has been trained for it yet**, so `play.py` loads the untrained `base` policy for the opponents — they pick uniformly among the legal moves. Training is the obvious next step, one run per player count (see the suggested parameters in [`train.py`](#trainpy)); the network (`app/models/smallw/`, an entity transformer with a map-distance attention bias and pointer heads) sizes itself from the board.
+Small World is played by 2 to 5 players, each player count on its own board (23 / 30 / 39 / 48 regions, 10 / 10 / 9 / 8 turns): you play one seat, the AIs play the others. Every player count is its own environment, with its own action / observation sizes, its own network and its own `zoo/<env>/`: `smallw2`, `smallw` (3 players), `smallw4` and `smallw5`. Trained models are shipped for 2 and 3 players (`app/zoo/pretrained/smallw2/` and `smallw/`). **No agent has been trained for 4 and 5 players yet**, so `play.py` loads the untrained `base` policy for those opponents — they pick uniformly among the legal moves; training them is one run per player count (see the suggested parameters in [`train.py`](#trainpy)). The network (`app/models/smallw/`, an entity transformer with a map-distance attention bias and pointer heads) sizes itself from the board.
 
 To play, launch `play.py`, open http://localhost:8080, pick the player count on the **Small World** card and press **Play** (open the home page first: it initialises the display options). Everything is played from the board: click a combo card to take a race, click a region to conquer / abandon / redeploy / place a marker, and use the buttons for *decline*, *end conquests* and the Diplomat alliances. The event log under the board tells you what the AIs did.
 
@@ -208,18 +218,35 @@ The board and card images live in `app/environments/smallw/static/` (served at `
 
 Jamaica is the pirate race around the island: each round the Captain rolls two dice and places them on *morning* and *evening*, every player secretly picks one of their action cards (load gold / food / gunpowder, move forward / backward), then each ship performs its two actions — paying the ports and sea spaces it lands on, fighting the ships it meets (gunpowder + combat die), plundering the pirate lairs. The game ends when a ship reaches Port Royal; the score is the space reached + the gold in the holds + the treasures. The engine supports 3 to 6 players (the 2-player Ghost Ship variant is not implemented); `-e jamaica` trains a single network on every count (each training game draws its player count among 3-6) and the player count is picked on the **Jamaica** card of `play.py`. The board, the deck, the combat die and the treasures were transcribed from the physical game, and the board is our own drawing.
 
-**No agent has been trained yet**: until a `best_model.zip` exists, the **Jamaica** page of `play.py` uses the untrained `base` policy for the AIs (uniform over the legal moves). A first training run (see the suggested parameters in [`train.py`](#trainpy)):
-
-  ```sh
-  cd app
-  python3 train.py -r -kl -e jamaica -t 0.15 -g 0.995 -ent 0.005 -lr 3e-4 -os 4096 -ob 512 -oe 5 -n_envs 4 -ne 200
-  ```
+A trained model is shipped in `app/zoo/pretrained/jamaica/` (see [`train.py`](#trainpy) for the parameters it was trained with). In the web UI the boat moves and the start of the battles are animated.
 
 The policy (`app/models/jamaica/`) is a small MLP with a pointer-style action head scoring every legal action from features the engine computes (where a card would land, what it would cost, shortages, battles, treasures...); see its README. Rules, rulings and the transcription table are in `app/environments/jamaica/README.md`, and the environment has its own test suite:
 
   ```sh
   cd app
   python3 -m environments.jamaica.tests.run_all            # 96 tests, ~40 s
+  ```
+
+#### Toy Battle
+
+Toy Battle is the two-player duel of toy troops: on your turn you either draw troops or place one on a base connected to your headquarters — on an empty base, on your own troop or on a weaker enemy one — then apply its effect. Surround a region to take its medals; you win by reaching the terrain's medal objective or by placing a troop on the enemy headquarters. The 8 terrains are implemented, each with its own special bases, and they share the same observation and action spaces: `-e toybattle` draws the terrain of every training game among the 8, so a single network plays them all. The trained model is shipped in `app/zoo/pretrained/toybattle/`.
+
+To play, pick a terrain (or *Random terrain*) on the **Toy Battle** card of `play.py`. The page is laid out for a phone, and the boards, troop tiles and medals are our own SVG drawings.
+
+The policy (`app/models/toybattle/`) is a graph transformer of about 762k parameters: the bases, regions, headquarters and troop types are tokens, the board comes in only as relations between them, and pointer heads score the actions — nothing is tied to a particular terrain; see its README. Rules as modelled and the terrain table are in `app/environments/toybattle/README.md`, and the environment has its own test suite:
+
+  ```sh
+  cd app
+  python3 -m environments.toybattle.tests.run_all          # 107 tests, ~15 s
+  ```
+
+#### Web interface tests
+
+The pages of `play.py` (home page, game pages, saving and resuming a game) are tested with pytest and NiceGUI's user fixture (needs `pytest` and `pytest-asyncio`):
+
+  ```sh
+  cd app/tests
+  pytest
   ```
 
 #### Other training entrypoints (experimental)

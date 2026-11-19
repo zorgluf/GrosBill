@@ -1,7 +1,7 @@
 # Toy Battle (`toybattle`)
 
 The two-player duel of toy troops (Paolo Mori & Alessandro Zucchini — Repos Production, 2025):
-env, web UI, tests, and a policy (`app/models/toybattle/README.md`) that is not trained yet.
+env, web UI, tests, and a policy (`app/models/toybattle/README.md`), trained model in `app/zoo/pretrained/toybattle/`.
 
 `ToyBattleEnv` plays one terrain (Castle Field by default, `terrain='pool'`…), or draws the terrain
 of every game among `terrains=(...)` at `reset()` (or takes `options={'terrain': key}`).
